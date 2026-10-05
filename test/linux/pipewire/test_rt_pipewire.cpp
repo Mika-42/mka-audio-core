@@ -18,24 +18,24 @@ import mka.audio.endpoint;
 import mka.audio.constants;
 
 namespace {
-    void outputCallback(void* user, const mka::audio::AudioProcessContext& ctx) noexcept {
+    void outputCallback(void* user, const mka::audio::core::AudioProcessContext& ctx) noexcept {
         rt_test::dirtyOutput(*static_cast<rt_test::ContractState*>(user), ctx);
     }
 
-    void inputCallback(void* user, const mka::audio::AudioProcessContext& ctx) noexcept {
+    void inputCallback(void* user, const mka::audio::core::AudioProcessContext& ctx) noexcept {
         rt_test::touchInput(*static_cast<rt_test::ContractState*>(user), ctx);
     }
 
     struct Found {
         bool available = false;
         std::string id;
-        mka::audio::SampleRate sampleRate = 0;
-        mka::audio::BufferSize bufferSize = 0;
+        mka::audio::core::SampleRate sampleRate = 0;
+        mka::audio::core::BufferSize bufferSize = 0;
         std::uint32_t channels = 0;
     };
 
     Found discover(const bool wantInput) {
-        const mka::audio::PipeWire pw;
+        const mka::audio::core::PipeWire pw;
         for (const auto& e : pw.getEndPoints()) {
             const auto& caps = wantInput ? e.input : e.output;
             if (!caps || caps->sampleRates.empty() || caps->bufferSizes.empty()
@@ -64,26 +64,26 @@ class PipeWireRtContractTest : public ::testing::Test {
             input = discover(true);
         }
 
-        static mka::audio::EndpointConfig makeOutputConfig() {
-            return mka::audio::EndpointConfig{
+        static mka::audio::core::EndpointConfig makeOutputConfig() {
+            return mka::audio::core::EndpointConfig{
                 .id = output.id,
-                .direction = mka::audio::Direction::Output,
+                .direction = mka::audio::core::Direction::Output,
                 .inputChannels = 0,
                 .outputChannels = output.channels,
                 .sampleRate = output.sampleRate,
-                .format = mka::audio::Format::Float32,
+                .format = mka::audio::core::Format::Float32,
                 .bufferSize = output.bufferSize,
             };
         }
 
-        static mka::audio::EndpointConfig makeInputConfig() {
-            return mka::audio::EndpointConfig{
+        static mka::audio::core::EndpointConfig makeInputConfig() {
+            return mka::audio::core::EndpointConfig{
                 .id = input.id,
-                .direction = mka::audio::Direction::Input,
+                .direction = mka::audio::core::Direction::Input,
                 .inputChannels = input.channels,
                 .outputChannels = 0,
                 .sampleRate = input.sampleRate,
-                .format = mka::audio::Format::Float32,
+                .format = mka::audio::core::Format::Float32,
                 .bufferSize = input.bufferSize,
             };
         }
@@ -97,7 +97,7 @@ TEST_F(PipeWireRtContractTest, OutputIsZeroedBeforeCallback) {
     if (!output.available) GTEST_SKIP() << "aucun endpoint de sortie PipeWire";
 
     rt_test::ContractState state;
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.setProcessFunction(outputCallback, &state));
     ASSERT_TRUE(pw.open(makeOutputConfig()));
     ASSERT_TRUE(pw.start());
@@ -121,7 +121,7 @@ TEST_F(PipeWireRtContractTest, NoHeapAllocationOnAudioThreadOutput) {
     alloc_probe::ignoreCurrentThread();
 
     rt_test::ContractState state;
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.setProcessFunction(outputCallback, &state));
     ASSERT_TRUE(pw.open(makeOutputConfig()));
 
@@ -129,7 +129,7 @@ TEST_F(PipeWireRtContractTest, NoHeapAllocationOnAudioThreadOutput) {
     const auto started = pw.start();
     const bool enough = started
         && rt_test::waitFor([&] { return state.calls.load() >= rt_test::kMinCycles; });
-    const auto stopped = started ? pw.stop() : mka::audio::Result{};
+    const auto stopped = started ? pw.stop() : mka::audio::core::Result{};
     const std::size_t allocations = alloc_probe::disarm();
 
     ASSERT_TRUE(started);
@@ -147,7 +147,7 @@ TEST_F(PipeWireRtContractTest, NoHeapAllocationOnAudioThreadInput) {
     alloc_probe::ignoreCurrentThread();
 
     rt_test::ContractState state;
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.setProcessFunction(inputCallback, &state));
     ASSERT_TRUE(pw.open(makeInputConfig()));
 
@@ -155,7 +155,7 @@ TEST_F(PipeWireRtContractTest, NoHeapAllocationOnAudioThreadInput) {
     const auto started = pw.start();
     const bool enough = started
         && rt_test::waitFor([&] { return state.calls.load() >= rt_test::kMinCycles; });
-    const auto stopped = started ? pw.stop() : mka::audio::Result{};
+    const auto stopped = started ? pw.stop() : mka::audio::core::Result{};
     const std::size_t allocations = alloc_probe::disarm();
 
     ASSERT_TRUE(started);
@@ -167,7 +167,7 @@ TEST_F(PipeWireRtContractTest, NoHeapAllocationOnAudioThreadInput) {
 }
 
 namespace {
-    void countCallback(void* user, const mka::audio::AudioProcessContext& ctx) noexcept {
+    void countCallback(void* user, const mka::audio::core::AudioProcessContext& ctx) noexcept {
         rt_test::countAudioCall(*static_cast<rt_test::StopContractState*>(user), ctx);
     }
 }
@@ -178,7 +178,7 @@ TEST_F(PipeWireRtContractTest, NoCallbackAfterStopUnderStress) {
     if (!output.available) GTEST_SKIP() << "aucun endpoint de sortie PipeWire";
 
     rt_test::StopContractState state;
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.setProcessFunction(countCallback, &state));
     ASSERT_TRUE(pw.open(makeOutputConfig()));
 
@@ -192,7 +192,7 @@ TEST_F(PipeWireRtContractTest, NoLibcAllocationOnAudioThread) {
     if (!output.available) GTEST_SKIP() << "aucun endpoint de sortie PipeWire";
 
     rt_test::StopContractState state;
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.setProcessFunction(countCallback, &state));
     ASSERT_TRUE(pw.open(makeOutputConfig()));
     ASSERT_TRUE(pw.start());
@@ -218,7 +218,7 @@ TEST_F(PipeWireRtContractTest, DestroyWhileRunningIsSafe) {
     rt_test::StopContractState state;
     for (int round = 0; round < 5; ++round) {
         {
-            mka::audio::PipeWire pw;
+            mka::audio::core::PipeWire pw;
             ASSERT_TRUE(pw.setProcessFunction(countCallback, &state));
             ASSERT_TRUE(pw.open(makeOutputConfig()));
             ASSERT_TRUE(pw.start());

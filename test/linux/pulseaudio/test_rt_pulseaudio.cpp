@@ -18,16 +18,16 @@ import mka.audio.endpoint;
 import mka.audio.constants;
 
 namespace {
-    constexpr mka::audio::SampleRate kRate = 48'000;
-    constexpr mka::audio::BufferSize kBuffer = 512;
+    constexpr mka::audio::core::SampleRate kRate = 48'000;
+    constexpr mka::audio::core::BufferSize kBuffer = 512;
     constexpr std::uint32_t kChannels = 2;
 
-    void outputCallback(void* user, const mka::audio::AudioProcessContext& ctx) noexcept {
+    void outputCallback(void* user, const mka::audio::core::AudioProcessContext& ctx) noexcept {
         rt_test::dirtyOutput(*static_cast<rt_test::ContractState*>(user), ctx);
     }
 
     std::string discoverOutputId() {
-        const mka::audio::PulseAudio pa;
+        const mka::audio::core::PulseAudio pa;
         for (const auto& e : pa.getEndPoints()) {
             if (e.output.has_value()) return e.id;
         }
@@ -40,14 +40,14 @@ class PulseAudioRtContractTest : public ::testing::Test {
         static std::string outputId;
         static void SetUpTestSuite() { outputId = discoverOutputId(); }
 
-        static mka::audio::EndpointConfig makeConfig() {
-            return mka::audio::EndpointConfig{
+        static mka::audio::core::EndpointConfig makeConfig() {
+            return mka::audio::core::EndpointConfig{
                 .id = outputId,
-                .direction = mka::audio::Direction::Output,
+                .direction = mka::audio::core::Direction::Output,
                 .inputChannels = 0,
                 .outputChannels = kChannels,
                 .sampleRate = kRate,
-                .format = mka::audio::Format::Float32,
+                .format = mka::audio::core::Format::Float32,
                 .bufferSize = kBuffer,
             };
         }
@@ -62,7 +62,7 @@ std::string PulseAudioRtContractTest::outputId;
 // persiste d'un appel à l'autre : sans remise à zéro, le 2e appel voit du sale.
 TEST_F(PulseAudioRtContractTest, OutputIsZeroedBeforeCallback) {
     rt_test::ContractState state;
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.setProcessFunction(outputCallback, &state));
     ASSERT_TRUE(pa.open(makeConfig()));
     ASSERT_TRUE(pa.start());
@@ -83,7 +83,7 @@ TEST_F(PulseAudioRtContractTest, NoHeapAllocationOnAudioThread) {
     alloc_probe::ignoreCurrentThread();
 
     rt_test::ContractState state;
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.setProcessFunction(outputCallback, &state));
     ASSERT_TRUE(pa.open(makeConfig()));
 
@@ -91,7 +91,7 @@ TEST_F(PulseAudioRtContractTest, NoHeapAllocationOnAudioThread) {
     const auto started = pa.start();
     const bool enough = started
         && rt_test::waitFor([&] { return state.calls.load() >= rt_test::kMinCycles; });
-    const auto stopped = started ? pa.stop() : mka::audio::Result{};
+    const auto stopped = started ? pa.stop() : mka::audio::core::Result{};
     const std::size_t allocations = alloc_probe::disarm();
 
     ASSERT_TRUE(started);
@@ -103,7 +103,7 @@ TEST_F(PulseAudioRtContractTest, NoHeapAllocationOnAudioThread) {
 }
 
 namespace {
-    void countCallback(void* user, const mka::audio::AudioProcessContext& ctx) noexcept {
+    void countCallback(void* user, const mka::audio::core::AudioProcessContext& ctx) noexcept {
         rt_test::countAudioCall(*static_cast<rt_test::StopContractState*>(user), ctx);
     }
 }
@@ -113,7 +113,7 @@ namespace {
 // alloue par conception dans pa_stream_begin_write (backend "best effort").
 TEST_F(PulseAudioRtContractTest, NoCallbackAfterStopUnderStress) {
     rt_test::StopContractState state;
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.setProcessFunction(countCallback, &state));
     ASSERT_TRUE(pa.open(makeConfig()));
 

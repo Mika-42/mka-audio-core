@@ -37,18 +37,18 @@ import mka.audio.constants;
 
 //--- Utilitaires ------------------------------------------------------------
 
-static const char* fmtToStr(const mka::audio::Format format) {
+static const char* fmtToStr(const mka::audio::core::Format format) {
     switch (format) {
-        case mka::audio::Format::Int16: return "int16";
-        case mka::audio::Format::Int24: return "int24";
-        case mka::audio::Format::Int32: return "int32";
-        case mka::audio::Format::Float32: return "float32";
-        case mka::audio::Format::Float64: return "float64";
+        case mka::audio::core::Format::Int16: return "int16";
+        case mka::audio::core::Format::Int24: return "int24";
+        case mka::audio::core::Format::Int32: return "int32";
+        case mka::audio::core::Format::Float32: return "float32";
+        case mka::audio::core::Format::Float64: return "float64";
     }
     std::unreachable();
 }
 
-static void printCaps(const mka::audio::StreamCapabilities& caps) {
+static void printCaps(const mka::audio::core::StreamCapabilities& caps) {
     std::println("  channels: {} - {}", caps.minChannels, caps.maxChannels);
 
     std::print("  sample rates: ");
@@ -71,22 +71,22 @@ namespace {
     // Contrairement à JACK, PulseAudio les accepte tous quel que soit le
     // serveur (il rééchantillonne / adapte), donc aucune découverte n'est
     // nécessaire pour ces deux champs.
-    constexpr mka::audio::SampleRate kSampleRate = 48000;
-    constexpr mka::audio::BufferSize kBufferSize = 512;
+    constexpr mka::audio::core::SampleRate kSampleRate = 48000;
+    constexpr mka::audio::core::BufferSize kBufferSize = 512;
 
-    mka::audio::EndpointConfig validOutputConfig(std::string id = "") {
-        return mka::audio::EndpointConfig{
+    mka::audio::core::EndpointConfig validOutputConfig(std::string id = "") {
+        return mka::audio::core::EndpointConfig{
             .id = std::move(id),
-            .direction = mka::audio::Direction::Output,
+            .direction = mka::audio::core::Direction::Output,
             .inputChannels = 0,
             .outputChannels = 2,
             .sampleRate = kSampleRate,
-            .format = mka::audio::Format::Float32,
+            .format = mka::audio::core::Format::Float32,
             .bufferSize = kBufferSize,
         };
     }
 
-    void expectOpenError(mka::audio::PulseAudio& pa, const mka::audio::EndpointConfig& cfg, const mka::audio::ErrorType expected) {
+    void expectOpenError(mka::audio::core::PulseAudio& pa, const mka::audio::core::EndpointConfig& cfg, const mka::audio::core::ErrorType expected) {
         const auto ret = pa.open(cfg);
         ASSERT_FALSE(ret) << "open() aurait dû échouer";
         EXPECT_EQ(ret.error(), expected);
@@ -118,20 +118,20 @@ namespace {
         g_pointersValid.store(false);
     }
 
-    void silence(const mka::audio::AudioProcessContext& ctx) noexcept {
+    void silence(const mka::audio::core::AudioProcessContext& ctx) noexcept {
         for (std::uint32_t ch = 0; ch < ctx.output.count; ++ch) {
             std::fill_n(ctx.output.channels[ch], ctx.frames, 0.0f);
         }
     }
 
-    void testCallback(void*, const mka::audio::AudioProcessContext& ctx) noexcept {
+    void testCallback(void*, const mka::audio::core::AudioProcessContext& ctx) noexcept {
         g_callbackThreadId.store(std::this_thread::get_id());
         g_callbackCalled.store(true);
         silence(ctx);
     }
 
     // Enregistre ce que le backend fournit réellement au callback.
-    void inspectCallback(void*, const mka::audio::AudioProcessContext& ctx) noexcept {
+    void inspectCallback(void*, const mka::audio::core::AudioProcessContext& ctx) noexcept {
         bool valid = true;
         for (std::uint32_t ch = 0; ch < ctx.input.count; ++ch) valid = valid && ctx.input.channels[ch] != nullptr;
         for (std::uint32_t ch = 0; ch < ctx.output.count; ++ch) valid = valid && ctx.output.channels[ch] != nullptr;
@@ -148,7 +148,7 @@ namespace {
 //--- Test GetEndPoints ------------------------------------------------------
 
 TEST(PulseAudioBackendTest, TestGetEndPoints) {
-    const mka::audio::PulseAudio pa;
+    const mka::audio::core::PulseAudio pa;
     const auto endpoints = pa.getEndPoints();
 
     for (const auto& endpoint : endpoints) {
@@ -190,7 +190,7 @@ TEST(PulseAudioBackendTest, TestGetEndPoints) {
 }
 
 TEST(PulseAudioBackendTest, TestGetEndPointsDoesNotThrow) {
-    const mka::audio::PulseAudio pa;
+    const mka::audio::core::PulseAudio pa;
     // Contrat : jamais d'exception, y compris sans serveur PulseAudio actif.
     ASSERT_NO_THROW({
         auto endpoints = pa.getEndPoints();
@@ -199,7 +199,7 @@ TEST(PulseAudioBackendTest, TestGetEndPointsDoesNotThrow) {
 
 TEST(PulseAudioBackendTest, TestGetEndPointsCallableWhileClosed) {
     // Backend::getEndPoints() n'a aucune garde d'état : appelable à tout moment.
-    const mka::audio::PulseAudio pa;
+    const mka::audio::core::PulseAudio pa;
     ASSERT_NO_THROW({
         auto endpoints = pa.getEndPoints();
         (void) endpoints;
@@ -207,7 +207,7 @@ TEST(PulseAudioBackendTest, TestGetEndPointsCallableWhileClosed) {
 }
 
 TEST(PulseAudioBackendTest, TestGetEndPointsIdsAreUnique) {
-    const mka::audio::PulseAudio pa;
+    const mka::audio::core::PulseAudio pa;
     const auto endpoints = pa.getEndPoints();
 
     std::vector<std::string> ids;
@@ -218,24 +218,24 @@ TEST(PulseAudioBackendTest, TestGetEndPointsIdsAreUnique) {
 }
 
 TEST(PulseAudioBackendTest, TestGetEndPointsCapabilitiesReflectServer) {
-    const mka::audio::PulseAudio pa;
+    const mka::audio::core::PulseAudio pa;
     const auto endpoints = pa.getEndPoints();
     if (endpoints.empty()) {
         GTEST_SKIP() << "aucun endpoint (serveur PulseAudio absent ?)";
     }
 
-    const auto check = [](const mka::audio::StreamCapabilities& caps) {
+    const auto check = [](const mka::audio::core::StreamCapabilities& caps) {
         EXPECT_EQ(caps.minChannels, 1u);
         EXPECT_GE(caps.maxChannels, 1u);
 
         // Format toujours Float32 (seul format réellement délivré).
         ASSERT_EQ(caps.formats.size(), 1u);
-        EXPECT_TRUE(caps.formats.front() == mka::audio::Format::Float32);
+        EXPECT_TRUE(caps.formats.front() == mka::audio::core::Format::Float32);
 
         // Contrairement à JACK, le serveur accepte toutes les valeurs
         // globales : les listes complètes doivent être reflétées telles quelles.
-        EXPECT_EQ(caps.sampleRates.size(), mka::audio::supportedSampleRates.size());
-        EXPECT_EQ(caps.bufferSizes.size(), mka::audio::supportedBufferSizes.size());
+        EXPECT_EQ(caps.sampleRates.size(), mka::audio::core::supportedSampleRates.size());
+        EXPECT_EQ(caps.bufferSizes.size(), mka::audio::core::supportedBufferSizes.size());
     };
 
     for (const auto& endpoint : endpoints) {
@@ -250,10 +250,10 @@ TEST(PulseAudioBackendTest, TestGetEndPointsContainsExpectedDeviceIfConfigured) 
         GTEST_SKIP() << "MKA_TEST_PULSEAUDIO_DEVICE_ID non défini, test ignoré";
     }
 
-    const mka::audio::PulseAudio pa;
+    const mka::audio::core::PulseAudio pa;
     const auto endpoints = pa.getEndPoints();
 
-    const auto it = std::ranges::find_if(endpoints, [&](const mka::audio::Endpoint& e) {
+    const auto it = std::ranges::find_if(endpoints, [&](const mka::audio::core::Endpoint& e) {
         return e.id == expectedId;
     });
     ASSERT_NE(it, endpoints.end()) << "endpoint attendu introuvable: " << expectedId;
@@ -264,137 +264,137 @@ TEST(PulseAudioBackendTest, TestGetEndPointsContainsExpectedDeviceIfConfigured) 
 TEST(PulseAudioBackendTest, TestOpenDuplexRejectedConfigurationFailed) {
     // Un flux PulseAudio est unidirectionnel : Duplex n'est pas géré (cf.
     // note en tête de pulseaudio.cppm), quels que soient les autres champs.
-    mka::audio::PulseAudio pa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::PulseAudio pa;
+    const mka::audio::core::EndpointConfig config {
         .id = "",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = kSampleRate,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = kBufferSize,
     };
-    expectOpenError(pa, config, mka::audio::ErrorType::ConfigurationFailed);
+    expectOpenError(pa, config, mka::audio::core::ErrorType::ConfigurationFailed);
 }
 
 TEST(PulseAudioBackendTest, TestOpenInvalidSampleRateRejected) {
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     auto cfg = validOutputConfig();
     cfg.sampleRate = 44190; // n'appartient pas à supportedSampleRates
-    expectOpenError(pa, cfg, mka::audio::ErrorType::SampleRateNotSupported);
+    expectOpenError(pa, cfg, mka::audio::core::ErrorType::SampleRateNotSupported);
 }
 
 TEST(PulseAudioBackendTest, TestOpenInvalidBufferSizeRejected) {
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     auto cfg = validOutputConfig();
     cfg.bufferSize = 500; // n'appartient pas à supportedBufferSizes
-    expectOpenError(pa, cfg, mka::audio::ErrorType::BufferSizeNotSupported);
+    expectOpenError(pa, cfg, mka::audio::core::ErrorType::BufferSizeNotSupported);
 }
 
 TEST(PulseAudioBackendTest, TestOpenInvalidFormatRejected) {
     // Seul Float32 est réellement délivré (PA_SAMPLE_FLOAT32NE), même si
     // les autres formats figurent dans supportedFormats (liste globale,
     // tous backends confondus).
-    mka::audio::PulseAudio pa;
-    for (const auto format : mka::audio::supportedFormats) {
-        if (format == mka::audio::Format::Float32) continue;
+    mka::audio::core::PulseAudio pa;
+    for (const auto format : mka::audio::core::supportedFormats) {
+        if (format == mka::audio::core::Format::Float32) continue;
         SCOPED_TRACE(fmtToStr(format));
 
         auto cfg = validOutputConfig();
         cfg.format = format;
-        expectOpenError(pa, cfg, mka::audio::ErrorType::FormatNotSupported);
+        expectOpenError(pa, cfg, mka::audio::core::ErrorType::FormatNotSupported);
     }
 }
 
 TEST(PulseAudioBackendTest, TestOpenOutputZeroChannelsRejected) {
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     auto cfg = validOutputConfig();
     cfg.outputChannels = 0;
-    expectOpenError(pa, cfg, mka::audio::ErrorType::ChannelsNotSupported);
+    expectOpenError(pa, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
 TEST(PulseAudioBackendTest, TestOpenInputZeroChannelsRejected) {
-    mka::audio::PulseAudio pa;
-    mka::audio::EndpointConfig cfg {
+    mka::audio::core::PulseAudio pa;
+    mka::audio::core::EndpointConfig cfg {
         .id = "",
-        .direction = mka::audio::Direction::Input,
+        .direction = mka::audio::core::Direction::Input,
         .inputChannels = 0,
         .outputChannels = 2, // ignoré pour une direction Input
         .sampleRate = kSampleRate,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = kBufferSize,
     };
-    expectOpenError(pa, cfg, mka::audio::ErrorType::ChannelsNotSupported);
+    expectOpenError(pa, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
 TEST(PulseAudioBackendTest, TestOpenTooManyChannelsRejected) {
     // pa_sample_spec::channels est un uint8_t : au-delà de 255, la config
     // ne peut de toute façon pas être représentée fidèlement.
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     auto cfg = validOutputConfig();
     cfg.outputChannels = 256;
-    expectOpenError(pa, cfg, mka::audio::ErrorType::ChannelsNotSupported);
+    expectOpenError(pa, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
 TEST(PulseAudioBackendTest, TestOpenValidationErrorPrecedence) {
     // Ordre des vérifications locales : direction, rate, buffer, format, channels.
-    mka::audio::PulseAudio pa;
-    mka::audio::EndpointConfig cfg{
+    mka::audio::core::PulseAudio pa;
+    mka::audio::core::EndpointConfig cfg{
         .id = "",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 0,
         .outputChannels = 0,
         .sampleRate = 44190,
-        .format = mka::audio::Format::Int16,
+        .format = mka::audio::core::Format::Int16,
         .bufferSize = 500,
     };
 
-    expectOpenError(pa, cfg, mka::audio::ErrorType::ConfigurationFailed);
-    cfg.direction = mka::audio::Direction::Output;
-    expectOpenError(pa, cfg, mka::audio::ErrorType::SampleRateNotSupported);
+    expectOpenError(pa, cfg, mka::audio::core::ErrorType::ConfigurationFailed);
+    cfg.direction = mka::audio::core::Direction::Output;
+    expectOpenError(pa, cfg, mka::audio::core::ErrorType::SampleRateNotSupported);
     cfg.sampleRate = kSampleRate;
-    expectOpenError(pa, cfg, mka::audio::ErrorType::BufferSizeNotSupported);
+    expectOpenError(pa, cfg, mka::audio::core::ErrorType::BufferSizeNotSupported);
     cfg.bufferSize = kBufferSize;
-    expectOpenError(pa, cfg, mka::audio::ErrorType::FormatNotSupported);
-    cfg.format = mka::audio::Format::Float32;
-    expectOpenError(pa, cfg, mka::audio::ErrorType::ChannelsNotSupported);
+    expectOpenError(pa, cfg, mka::audio::core::ErrorType::FormatNotSupported);
+    cfg.format = mka::audio::core::Format::Float32;
+    expectOpenError(pa, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
 TEST(PulseAudioBackendTest, TestOpenInvalidIDFails) {
     // Vrai avec ou sans serveur : sans serveur, l'endpoint est de toute façon
     // indisponible. Tous les autres champs sont valides pour isoler l'id.
-    mka::audio::PulseAudio pa;
-    expectOpenError(pa, validOutputConfig("this-device-does-not-exist-999999"), mka::audio::ErrorType::EndpointUnavailable);
+    mka::audio::core::PulseAudio pa;
+    expectOpenError(pa, validOutputConfig("this-device-does-not-exist-999999"), mka::audio::core::ErrorType::EndpointUnavailable);
 }
 
 //--- Test Start / Stop / Close : garde-fous d'état --------------------------
 
 TEST(PulseAudioBackendTest, TestStartWithoutOpenFailsInvalidState) {
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
 
     auto ret = pa.start();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST(PulseAudioBackendTest, TestStopWithoutStartFailsInvalidState) {
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
 
     auto ret = pa.stop();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST(PulseAudioBackendTest, TestCloseWithoutOpenFailsInvalidState) {
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
 
     auto ret = pa.close();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST(PulseAudioBackendTest, TestSetProcessFunctionAllowedWhenClosed) {
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
 
     auto ret = pa.setProcessFunction(testCallback);
     ASSERT_TRUE(ret);
@@ -402,18 +402,18 @@ TEST(PulseAudioBackendTest, TestSetProcessFunctionAllowedWhenClosed) {
 
 TEST(PulseAudioBackendTest, TestFailedOpenDoesNotChangeState) {
     // Après un open échoué, l'état reste Closed : start/close refusés.
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     auto cfg = validOutputConfig();
-    cfg.format = mka::audio::Format::Int16;
-    expectOpenError(pa, cfg, mka::audio::ErrorType::FormatNotSupported);
+    cfg.format = mka::audio::core::Format::Int16;
+    expectOpenError(pa, cfg, mka::audio::core::ErrorType::FormatNotSupported);
 
     auto start = pa.start();
     ASSERT_FALSE(start);
-    EXPECT_EQ(start.error(), mka::audio::ErrorType::InvalidState);
+    EXPECT_EQ(start.error(), mka::audio::core::ErrorType::InvalidState);
 
     auto close = pa.close();
     ASSERT_FALSE(close);
-    EXPECT_EQ(close.error(), mka::audio::ErrorType::InvalidState);
+    EXPECT_EQ(close.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 //--- Fixture pour les tests nécessitant un serveur PulseAudio ---------------
@@ -425,9 +425,9 @@ namespace {
     };
 
     DiscoveredEndpoint discoverOutput() {
-        const mka::audio::PulseAudio pa;
+        const mka::audio::core::PulseAudio pa;
         const auto endpoints = pa.getEndPoints();
-        const auto it = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+        const auto it = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint& e) {
             return e.output.has_value();
         });
         if (it == endpoints.end()) return {};
@@ -435,7 +435,7 @@ namespace {
     }
 
     DiscoveredEndpoint discoverInput() {
-        const mka::audio::PulseAudio pa;
+        const mka::audio::core::PulseAudio pa;
         const auto endpoints = pa.getEndPoints();
 
         // Motif voulu : variable d'environnement, sinon "Mic1" par défaut.
@@ -443,13 +443,13 @@ namespace {
         const std::string hint = env ? env : "Mic1";
 
         // 1) Entrée dont l'id contient le motif
-        auto it = std::ranges::find_if(endpoints, [&](const mka::audio::Endpoint& e) {
+        auto it = std::ranges::find_if(endpoints, [&](const mka::audio::core::Endpoint& e) {
             return e.input.has_value() && e.id.find(hint) != std::string::npos;
         });
 
         // 2) Sinon, première entrée disponible
         if (it == endpoints.end()) {
-            it = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+            it = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint& e) {
                 return e.input.has_value();
             });
         }
@@ -476,19 +476,19 @@ class PulseAudioBackendHwTest : public ::testing::Test {
             input = discoverInput();
         }
 
-        static mka::audio::EndpointConfig makeOutputConfig() {
+        static mka::audio::core::EndpointConfig makeOutputConfig() {
             auto cfg = validOutputConfig(output.id);
             return cfg;
         }
 
-        static mka::audio::EndpointConfig makeInputConfig() {
-            return mka::audio::EndpointConfig{
+        static mka::audio::core::EndpointConfig makeInputConfig() {
+            return mka::audio::core::EndpointConfig{
                 .id = input.id,
-                .direction = mka::audio::Direction::Input,
+                .direction = mka::audio::core::Direction::Input,
                 .inputChannels = 2,
                 .outputChannels = 0,
                 .sampleRate = kSampleRate,
-                .format = mka::audio::Format::Float32,
+                .format = mka::audio::core::Format::Float32,
                 .bufferSize = kBufferSize,
             };
         }
@@ -501,7 +501,7 @@ DiscoveredEndpoint PulseAudioBackendHwTest::input;
 TEST_F(PulseAudioBackendHwTest, TestGetEndPointsCallableWhileRunning) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.setProcessFunction(testCallback));
     ASSERT_TRUE(pa.open(makeOutputConfig()));
     ASSERT_TRUE(pa.start());
@@ -522,22 +522,22 @@ TEST_F(PulseAudioBackendHwTest, TestOpenIDWithWrongDirectionFails) {
     // Output, ou l'inverse) doit être refusé.
     SKIP_UNLESS(output);
 
-    const mka::audio::PulseAudio discoverer;
+    const mka::audio::core::PulseAudio discoverer;
     const auto endpoints = discoverer.getEndPoints();
-    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint& e) {
         return e.input.has_value() && !e.output.has_value();
     });
     if (it == endpoints.end()) GTEST_SKIP() << "aucun endpoint source-only trouvé";
 
-    mka::audio::PulseAudio pa;
-    expectOpenError(pa, validOutputConfig(it->id), mka::audio::ErrorType::EndpointUnavailable);
+    mka::audio::core::PulseAudio pa;
+    expectOpenError(pa, validOutputConfig(it->id), mka::audio::core::ErrorType::EndpointUnavailable);
 }
 
 TEST_F(PulseAudioBackendHwTest, TestOpenFailureLeavesStateClosedAllowingRetry) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
-    expectOpenError(pa, validOutputConfig("still-not-a-real-device"), mka::audio::ErrorType::EndpointUnavailable);
+    mka::audio::core::PulseAudio pa;
+    expectOpenError(pa, validOutputConfig("still-not-a-real-device"), mka::audio::core::ErrorType::EndpointUnavailable);
 
     // L'échec précédent ne doit rien laisser derrière lui.
     ASSERT_TRUE(pa.open(makeOutputConfig()));
@@ -549,7 +549,7 @@ TEST_F(PulseAudioBackendHwTest, TestOpenFailureLeavesStateClosedAllowingRetry) {
 TEST_F(PulseAudioBackendHwTest, TestOpenSucceed) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     auto ret = pa.open(makeOutputConfig());
     ASSERT_TRUE(ret);
     EXPECT_TRUE(pa.close());
@@ -558,14 +558,14 @@ TEST_F(PulseAudioBackendHwTest, TestOpenSucceed) {
 TEST_F(PulseAudioBackendHwTest, TestOpenInputSucceed) {
     SKIP_UNLESS(input);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeInputConfig()));
     EXPECT_TRUE(pa.close());
 }
 
 TEST_F(PulseAudioBackendHwTest, TestOpenWithEmptyIdSucceeds) {
     // Id vide = sink/source par défaut du serveur.
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     auto cfg = validOutputConfig();
     cfg.id = "";
     ASSERT_TRUE(pa.open(cfg));
@@ -577,12 +577,12 @@ TEST_F(PulseAudioBackendHwTest, TestOpenWithEmptyIdSucceeds) {
 TEST_F(PulseAudioBackendHwTest, TestOpenTwiceFailsWithInvalidState) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
 
     auto ret = pa.open(makeOutputConfig());
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     EXPECT_TRUE(pa.close());
 }
@@ -592,7 +592,7 @@ TEST_F(PulseAudioBackendHwTest, TestOpenTwiceFailsWithInvalidState) {
 TEST_F(PulseAudioBackendHwTest, TestStartSucceedsAfterOpen) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
 
     auto ret = pa.start();
@@ -605,13 +605,13 @@ TEST_F(PulseAudioBackendHwTest, TestStartSucceedsAfterOpen) {
 TEST_F(PulseAudioBackendHwTest, TestStartTwiceFailsInvalidState) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
     ASSERT_TRUE(pa.start());
 
     auto ret = pa.start();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     EXPECT_TRUE(pa.stop());
     EXPECT_TRUE(pa.close());
@@ -621,7 +621,7 @@ TEST_F(PulseAudioBackendHwTest, TestStartInvokesCallbackOnDifferentThread) {
     SKIP_UNLESS(output);
 
     resetCallbackState();
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.setProcessFunction(testCallback));
     ASSERT_TRUE(pa.open(makeOutputConfig()));
 
@@ -640,7 +640,7 @@ TEST_F(PulseAudioBackendHwTest, TestStartWithoutCallbackDoesNotCrash) {
     // planter, même si le contenu audio n'est pas vérifiable ici.
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
     ASSERT_TRUE(pa.start());
 
@@ -654,7 +654,7 @@ TEST_F(PulseAudioBackendHwTest, TestCallbackReceivesConfiguredOutputBuffers) {
     SKIP_UNLESS(output);
 
     resetCallbackState();
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     const auto cfg = makeOutputConfig();
     ASSERT_TRUE(pa.setProcessFunction(inspectCallback));
     ASSERT_TRUE(pa.open(cfg));
@@ -677,7 +677,7 @@ TEST_F(PulseAudioBackendHwTest, TestCallbackReceivesConfiguredInputBuffers) {
     SKIP_UNLESS(input);
 
     resetCallbackState();
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     const auto cfg = makeInputConfig();
     ASSERT_TRUE(pa.setProcessFunction(inspectCallback));
     ASSERT_TRUE(pa.open(cfg));
@@ -697,13 +697,13 @@ TEST_F(PulseAudioBackendHwTest, TestCallbackReceivesConfiguredInputBuffers) {
 TEST_F(PulseAudioBackendHwTest, TestSetProcessFunctionFailsWhileRunning) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
     ASSERT_TRUE(pa.start());
 
     auto ret = pa.setProcessFunction(testCallback);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     EXPECT_TRUE(pa.stop());
     EXPECT_TRUE(pa.close());
@@ -714,12 +714,12 @@ TEST_F(PulseAudioBackendHwTest, TestSetProcessFunctionFailsWhileRunning) {
 TEST_F(PulseAudioBackendHwTest, TestStopWithoutStartAfterOpenFailsInvalidState) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
 
     auto ret = pa.stop();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     EXPECT_TRUE(pa.close());
 }
@@ -727,7 +727,7 @@ TEST_F(PulseAudioBackendHwTest, TestStopWithoutStartAfterOpenFailsInvalidState) 
 TEST_F(PulseAudioBackendHwTest, TestStopSucceedsAfterStart) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
     ASSERT_TRUE(pa.start());
 
@@ -740,14 +740,14 @@ TEST_F(PulseAudioBackendHwTest, TestStopSucceedsAfterStart) {
 TEST_F(PulseAudioBackendHwTest, TestStopTwiceFailsInvalidState) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
     ASSERT_TRUE(pa.start());
     ASSERT_TRUE(pa.stop());
 
     auto ret = pa.stop();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     EXPECT_TRUE(pa.close());
 }
@@ -756,7 +756,7 @@ TEST_F(PulseAudioBackendHwTest, TestStopActuallyHaltsCallbackInvocations) {
     SKIP_UNLESS(output);
 
     resetCallbackState();
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.setProcessFunction(testCallback));
     ASSERT_TRUE(pa.open(makeOutputConfig()));
     ASSERT_TRUE(pa.start());
@@ -778,7 +778,7 @@ TEST_F(PulseAudioBackendHwTest, TestStopAllowsRestartAndCallbackResumes) {
     SKIP_UNLESS(output);
 
     resetCallbackState();
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.setProcessFunction(testCallback));
     ASSERT_TRUE(pa.open(makeOutputConfig()));
     ASSERT_TRUE(pa.start());
@@ -798,7 +798,7 @@ TEST_F(PulseAudioBackendHwTest, TestStopAllowsRestartAndCallbackResumes) {
 TEST_F(PulseAudioBackendHwTest, TestCloseSucceedsAfterOpen) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
 
     auto ret = pa.close();
@@ -808,14 +808,14 @@ TEST_F(PulseAudioBackendHwTest, TestCloseSucceedsAfterOpen) {
 TEST_F(PulseAudioBackendHwTest, TestCloseFailsWhileRunning) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
     ASSERT_TRUE(pa.start());
 
     // Ordre imposé open -> start -> stop -> close.
     auto ret = pa.close();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     ASSERT_TRUE(pa.stop());
     ASSERT_TRUE(pa.close());
@@ -824,19 +824,19 @@ TEST_F(PulseAudioBackendHwTest, TestCloseFailsWhileRunning) {
 TEST_F(PulseAudioBackendHwTest, TestCloseTwiceFailsInvalidState) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
     ASSERT_TRUE(pa.close());
 
     auto ret = pa.close();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST_F(PulseAudioBackendHwTest, TestCloseReleasesResourcesForReopen) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
     ASSERT_TRUE(pa.close());
 
@@ -848,7 +848,7 @@ TEST_F(PulseAudioBackendHwTest, TestCloseReleasesResourcesForReopen) {
 TEST_F(PulseAudioBackendHwTest, TestFullLifecycleOpenStartStopClose) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     ASSERT_TRUE(pa.open(makeOutputConfig()));
     ASSERT_TRUE(pa.start());
     ASSERT_TRUE(pa.stop());
@@ -861,7 +861,7 @@ TEST_F(PulseAudioBackendHwTest, TestLifecycleRepeatedCycles) {
     // d'état sur des cycles répétés.
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     for (int i = 0; i < 3; ++i) {
         SCOPED_TRACE(i);
         ASSERT_TRUE(pa.open(makeOutputConfig()));
@@ -877,12 +877,12 @@ TEST_F(PulseAudioBackendHwTest, TestDestructorWhileOpenReleasesResources) {
     SKIP_UNLESS(output);
 
     {
-        mka::audio::PulseAudio pa;
+        mka::audio::core::PulseAudio pa;
         ASSERT_TRUE(pa.open(makeOutputConfig()));
         // destruction sans close()
     }
 
-    mka::audio::PulseAudio second;
+    mka::audio::core::PulseAudio second;
     ASSERT_TRUE(second.open(makeOutputConfig()));
     EXPECT_TRUE(second.close());
 }
@@ -891,14 +891,14 @@ TEST_F(PulseAudioBackendHwTest, TestDestructorWhileRunningReleasesResources) {
     SKIP_UNLESS(output);
 
     {
-        mka::audio::PulseAudio pa;
+        mka::audio::core::PulseAudio pa;
         ASSERT_TRUE(pa.setProcessFunction(testCallback));
         ASSERT_TRUE(pa.open(makeOutputConfig()));
         ASSERT_TRUE(pa.start());
         // destruction sans stop() ni close()
     }
 
-    mka::audio::PulseAudio second;
+    mka::audio::core::PulseAudio second;
     ASSERT_TRUE(second.open(makeOutputConfig()));
     EXPECT_TRUE(second.close());
 }
@@ -906,8 +906,8 @@ TEST_F(PulseAudioBackendHwTest, TestDestructorWhileRunningReleasesResources) {
 TEST_F(PulseAudioBackendHwTest, TestTwoInstancesCanCoexist) {
     SKIP_UNLESS(output);
 
-    mka::audio::PulseAudio a;
-    mka::audio::PulseAudio b;
+    mka::audio::core::PulseAudio a;
+    mka::audio::core::PulseAudio b;
     ASSERT_TRUE(a.setProcessFunction(testCallback));
     ASSERT_TRUE(b.setProcessFunction(testCallback));
     ASSERT_TRUE(a.open(makeOutputConfig()));
@@ -930,7 +930,7 @@ namespace {
     float g_sineGainStep = 0.0f;
     std::atomic<bool> g_sineFadeOut{false};
 
-    void sineCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void sineCallback(void*, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         for (std::uint32_t i = 0; i < ctx.frames; ++i) {
             constexpr float amplitude = 0.2f;
             const float target = g_sineFadeOut.load(std::memory_order_relaxed) ? 0.0f : 1.0f;
@@ -958,7 +958,7 @@ TEST(PulseAudioBackendTest, DISABLED_TestPlaySineWave) {
 
     constexpr double frequency = 440.0;
 
-    mka::audio::PulseAudio pa;
+    mka::audio::core::PulseAudio pa;
     auto config = validOutputConfig(out.id);
 
     g_sinePhase = 0.0;
@@ -991,7 +991,7 @@ namespace {
     std::atomic<std::size_t> g_warmupFramesLeft{0};
     std::size_t g_recordCapacityFrames = 0;
 
-    void recordCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void recordCallback(void*, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         std::size_t start = 0;
         const std::size_t warm = g_warmupFramesLeft.load();
         if (warm > 0) {
@@ -1016,7 +1016,7 @@ namespace {
     std::size_t g_playbackLeadFrames = 0;
     std::size_t g_playbackTotalFrames = 0;
 
-    void playbackFromRecordCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void playbackFromRecordCallback(void*, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         const std::size_t pos = g_playbackPosition.load();
 
         for (std::uint32_t ch = 0; ch < ctx.output.count; ++ch) {
@@ -1074,14 +1074,14 @@ TEST(PulseAudioBackendTest, DISABLED_TestRecordAndPlayback) {
 
     // --- Phase 1 : enregistrement ---
     {
-        mka::audio::PulseAudio recorder;
-        const mka::audio::EndpointConfig recordConfig {
+        mka::audio::core::PulseAudio recorder;
+        const mka::audio::core::EndpointConfig recordConfig {
             .id = in.id,
-            .direction = mka::audio::Direction::Input,
+            .direction = mka::audio::core::Direction::Input,
             .inputChannels = channels,
             .outputChannels = 0,
             .sampleRate = kSampleRate,
-            .format = mka::audio::Format::Float32,
+            .format = mka::audio::core::Format::Float32,
             .bufferSize = kBufferSize,
         };
 
@@ -1107,14 +1107,14 @@ TEST(PulseAudioBackendTest, DISABLED_TestRecordAndPlayback) {
     g_playbackPosition.store(0);
 
     {
-        mka::audio::PulseAudio player;
-        const mka::audio::EndpointConfig playbackConfig {
+        mka::audio::core::PulseAudio player;
+        const mka::audio::core::EndpointConfig playbackConfig {
             .id = out.id,
-            .direction = mka::audio::Direction::Output,
+            .direction = mka::audio::core::Direction::Output,
             .inputChannels = 0,
             .outputChannels = channels,
             .sampleRate = kSampleRate,
-            .format = mka::audio::Format::Float32,
+            .format = mka::audio::core::Format::Float32,
             .bufferSize = kBufferSize,
         };
 

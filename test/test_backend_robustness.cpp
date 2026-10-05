@@ -21,9 +21,9 @@ import mka.audio.backend.abstract;
 
 namespace {
     using namespace std::chrono_literals;
-    using mka::audio::ErrorType;
+    using mka::audio::core::ErrorType;
 
-    class ThrowingBackend : public mka::audio::Backend {
+    class ThrowingBackend : public mka::audio::core::Backend {
     public:
         std::atomic<bool> throwOnOpen{false};
         std::atomic<bool> throwOnStart{false};
@@ -35,27 +35,27 @@ namespace {
         std::atomic<int> startCalls{0};
 
     protected:
-        std::vector<mka::audio::Endpoint> getEndPoints_() const override {
+        std::vector<mka::audio::core::Endpoint> getEndPoints_() const override {
             if (throwOnEndpoints) throw std::bad_alloc{};
             return {};
         }
-        mka::audio::Result open_(mka::audio::EndpointConfig const&) override {
+        mka::audio::core::Result open_(mka::audio::core::EndpointConfig const&) override {
             ++openCalls;
             std::this_thread::sleep_for(2ms);   // élargit la fenêtre de course
             if (throwOnOpen) throw std::bad_alloc{};
             return {};
         }
-        mka::audio::Result start_() override {
+        mka::audio::core::Result start_() override {
             ++startCalls;
             std::this_thread::sleep_for(2ms);
             if (throwOnStart) throw std::runtime_error("start");
             return {};
         }
-        mka::audio::Result stop_() override {
+        mka::audio::core::Result stop_() override {
             if (throwOnStop) throw std::runtime_error("stop");
             return {};
         }
-        mka::audio::Result close_() override {
+        mka::audio::core::Result close_() override {
             if (throwOnClose) throw std::runtime_error("close");
             return {};
         }
@@ -205,9 +205,9 @@ namespace {
         std::atomic<int> closeResult{-1};
     };
 
-    void reentrantHandler(void* user, const mka::audio::Event& e) noexcept {
+    void reentrantHandler(void* user, const mka::audio::core::Event& e) noexcept {
         auto* p = static_cast<ReentryProbe*>(user);
-        if (e.type != mka::audio::EventType::XRun) return;
+        if (e.type != mka::audio::core::EventType::XRun) return;
 
         const auto s = p->backend->stop();      // ne doit ni bloquer ni s'attendre lui-même
         p->stopResult = s ? 0 : static_cast<int>(s.error());

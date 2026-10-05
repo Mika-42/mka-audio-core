@@ -5,7 +5,7 @@ module;
 #include <cstdint>
 export module mka.audio.process;
 
-export namespace mka::audio {
+export namespace mka::audio::core {
     struct InputBuffer {
         const float* const* channels;
         std::uint32_t count;

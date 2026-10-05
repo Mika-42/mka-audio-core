@@ -18,19 +18,19 @@ import mka.audio.endpoint;
 import mka.audio.constants;
 
 namespace {
-    void outputCallback(void* user, const mka::audio::AudioProcessContext& ctx) noexcept {
+    void outputCallback(void* user, const mka::audio::core::AudioProcessContext& ctx) noexcept {
         rt_test::dirtyOutput(*static_cast<rt_test::ContractState*>(user), ctx);
     }
 
-    mka::audio::EndpointConfig makeConfig() {
+    mka::audio::core::EndpointConfig makeConfig() {
         const char* env = std::getenv("MKA_TEST_ALSA_DEVICE");
-        return mka::audio::EndpointConfig{
+        return mka::audio::core::EndpointConfig{
             .id = env ? env : "hw:1,0",
-            .direction = mka::audio::Direction::Duplex,
+            .direction = mka::audio::core::Direction::Duplex,
             .inputChannels = 2,
             .outputChannels = 2,
             .sampleRate = 44100,
-            .format = mka::audio::Format::Int32,
+            .format = mka::audio::core::Format::Int32,
             .bufferSize = 512,
         };
     }
@@ -40,7 +40,7 @@ namespace {
 // d'un cycle à l'autre : sans remise à zéro, le 2e cycle voit du sale.
 TEST(ALSARtContractTest, OutputIsZeroedBeforeCallback) {
     rt_test::ContractState state;
-    mka::audio::ALSA alsa;
+    mka::audio::core::ALSA alsa;
     ASSERT_TRUE(alsa.setProcessFunction(outputCallback, &state));
 
     if (!alsa.open(makeConfig())) GTEST_SKIP() << "device ALSA indisponible";
@@ -62,7 +62,7 @@ TEST(ALSARtContractTest, NoHeapAllocationOnAudioThread) {
     alloc_probe::ignoreCurrentThread();
 
     rt_test::ContractState state;
-    mka::audio::ALSA alsa;
+    mka::audio::core::ALSA alsa;
     ASSERT_TRUE(alsa.setProcessFunction(outputCallback, &state));
 
     if (!alsa.open(makeConfig())) GTEST_SKIP() << "device ALSA indisponible";
@@ -71,7 +71,7 @@ TEST(ALSARtContractTest, NoHeapAllocationOnAudioThread) {
     const auto started = alsa.start();
     const bool enough = started
         && rt_test::waitFor([&] { return state.calls.load() >= rt_test::kMinCycles; });
-    const auto stopped = started ? alsa.stop() : mka::audio::Result{};
+    const auto stopped = started ? alsa.stop() : mka::audio::core::Result{};
     const std::size_t allocations = alloc_probe::disarm();
 
     ASSERT_TRUE(started);

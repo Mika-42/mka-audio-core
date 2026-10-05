@@ -7,7 +7,7 @@
 import mka.audio.backend.abstract;
 
 namespace {
-    class BackendImpl : public mka::audio::Backend {
+    class BackendImpl : public mka::audio::core::Backend {
     public:
         bool failOpen = false;
         bool failClose = false;
@@ -18,37 +18,37 @@ namespace {
         ~BackendImpl() override = default;
 
     protected:
-        std::vector<mka::audio::Endpoint>
+        std::vector<mka::audio::core::Endpoint>
         getEndPoints_() const noexcept override {
             return {};
         }
 
-        mka::audio::Result open_(
-            mka::audio::EndpointConfig const&
+        mka::audio::core::Result open_(
+            mka::audio::core::EndpointConfig const&
         ) noexcept override {
             if (failOpen)
-                return std::unexpected(mka::audio::ErrorType::InvalidState);
+                return std::unexpected(mka::audio::core::ErrorType::InvalidState);
 
             return {};
         }
 
-        mka::audio::Result close_() noexcept override {
+        mka::audio::core::Result close_() noexcept override {
             if (failClose)
-                return std::unexpected(mka::audio::ErrorType::InvalidState);
+                return std::unexpected(mka::audio::core::ErrorType::InvalidState);
 
             return {};
         }
 
-        mka::audio::Result start_() noexcept override {
+        mka::audio::core::Result start_() noexcept override {
             if (failStart)
-                return std::unexpected(mka::audio::ErrorType::InvalidState);
+                return std::unexpected(mka::audio::core::ErrorType::InvalidState);
 
             return {};
         }
 
-        mka::audio::Result stop_() noexcept override {
+        mka::audio::core::Result stop_() noexcept override {
             if (failStop)
-                return std::unexpected(mka::audio::ErrorType::InvalidState);
+                return std::unexpected(mka::audio::core::ErrorType::InvalidState);
 
             return {};
         }
@@ -72,7 +72,7 @@ class InvalidTransitionTest
     : public ::testing::TestWithParam<InvalidTransition> {
 };
 
-mka::audio::Result execute(
+mka::audio::core::Result execute(
     BackendImpl& backend,
     BackendOperation operation
 ) {
@@ -103,7 +103,7 @@ TEST_P(InvalidTransitionTest, RejectsTransition) {
     auto res = execute(backend, GetParam().operation);
 
     ASSERT_FALSE(res);
-    EXPECT_EQ(res.error(), mka::audio::ErrorType::InvalidState);
+    EXPECT_EQ(res.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -178,7 +178,7 @@ TEST(AbstractBackendTest, TestOpenHookFailure) {
     auto res = backend.open({});
 
     ASSERT_FALSE(res);
-    EXPECT_EQ(res.error(), mka::audio::ErrorType::InvalidState);
+    EXPECT_EQ(res.error(), mka::audio::core::ErrorType::InvalidState);
 
     // open_() a échoué : le backend doit toujours être Closed.
     backend.failOpen = false;
@@ -197,7 +197,7 @@ TEST(AbstractBackendTest, TestStartHookFailure) {
     auto res = backend.start();
 
     ASSERT_FALSE(res);
-    EXPECT_EQ(res.error(), mka::audio::ErrorType::InvalidState);
+    EXPECT_EQ(res.error(), mka::audio::core::ErrorType::InvalidState);
 
     // start_() a échoué : le backend doit toujours être Open.
     backend.failStart = false;
@@ -217,7 +217,7 @@ TEST(AbstractBackendTest, TestStopHookFailure) {
     auto res = backend.stop();
 
     ASSERT_FALSE(res);
-    EXPECT_EQ(res.error(), mka::audio::ErrorType::InvalidState);
+    EXPECT_EQ(res.error(), mka::audio::core::ErrorType::InvalidState);
 
     // stop_() a échoué : le backend doit toujours être Running.
     backend.failStop = false;
@@ -236,7 +236,7 @@ TEST(AbstractBackendTest, TestCloseHookFailure) {
     auto res = backend.close();
 
     ASSERT_FALSE(res);
-    EXPECT_EQ(res.error(), mka::audio::ErrorType::InvalidState);
+    EXPECT_EQ(res.error(), mka::audio::core::ErrorType::InvalidState);
 
     // close_() a échoué : le backend doit toujours être Open.
     backend.failClose = false;

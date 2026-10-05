@@ -20,7 +20,7 @@ import mka.audio.endpoint;
 import mka.audio.constants;
 import mka.audio.process;
 
-namespace mka::audio {
+namespace mka::audio::core {
     export class PipeWire final : public Backend {
     public:
         PipeWire() noexcept {

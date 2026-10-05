@@ -15,27 +15,27 @@ import mka.audio.backend.abstract;
 namespace {
     // Backend minimal : les hooks réussissent toujours, et deux accesseurs
     // exposent le callback / le contexte mémorisés par la classe de base.
-    class UserDataBackend : public mka::audio::Backend {
+    class UserDataBackend : public mka::audio::core::Backend {
     public:
         void* storedUserData() const noexcept { return userData; }
 
-        void invokeCallback(const mka::audio::AudioProcessContext& ctx) const noexcept {
+        void invokeCallback(const mka::audio::core::AudioProcessContext& ctx) const noexcept {
             if (callback) callback(userData, ctx);
         }
 
     protected:
-        std::vector<mka::audio::Endpoint> getEndPoints_() const noexcept override { return {}; }
-        mka::audio::Result open_(mka::audio::EndpointConfig const&) noexcept override { return {}; }
-        mka::audio::Result start_() noexcept override { return {}; }
-        mka::audio::Result stop_() noexcept override { return {}; }
-        mka::audio::Result close_() noexcept override { return {}; }
+        std::vector<mka::audio::core::Endpoint> getEndPoints_() const noexcept override { return {}; }
+        mka::audio::core::Result open_(mka::audio::core::EndpointConfig const&) noexcept override { return {}; }
+        mka::audio::core::Result start_() noexcept override { return {}; }
+        mka::audio::core::Result stop_() noexcept override { return {}; }
+        mka::audio::core::Result close_() noexcept override { return {}; }
     };
 
     struct Counter {
         int hits = 0;
     };
 
-    void countingCallback(void* user, const mka::audio::AudioProcessContext&) noexcept {
+    void countingCallback(void* user, const mka::audio::core::AudioProcessContext&) noexcept {
         ++static_cast<Counter*>(user)->hits;
     }
 }
@@ -117,7 +117,7 @@ TEST(BackendUserDataTest, RejectedSetWhileRunningKeepsPreviousUserData) {
 
     auto res = backend.setProcessFunction(countingCallback, &b);
     ASSERT_FALSE(res);
-    EXPECT_EQ(res.error(), mka::audio::ErrorType::InvalidState);
+    EXPECT_EQ(res.error(), mka::audio::core::ErrorType::InvalidState);
 
     // Ni le callback ni le contexte ne doivent avoir changé.
     EXPECT_EQ(backend.storedUserData(), &a);

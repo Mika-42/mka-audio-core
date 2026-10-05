@@ -15,26 +15,26 @@ namespace {
     using namespace std::chrono_literals;
 
     // Backend factice : les tests jouent le rôle d'un backend réel qui détecte un xrun.
-    class FakeBackend : public mka::audio::Backend {
+    class FakeBackend : public mka::audio::core::Backend {
     public:
         void fakeXRun() noexcept { notifyXRun(); }
         void fakeFailure() noexcept { notifyFailed(); }
         void fakeRealtime(bool granted) noexcept { notifyRealtime(granted); }
 
     protected:
-        std::vector<mka::audio::Endpoint> getEndPoints_() const override { return {}; }
-        mka::audio::Result open_(mka::audio::EndpointConfig const&) override { return {}; }
-        mka::audio::Result start_() override { return {}; }
-        mka::audio::Result stop_() override { return {}; }
-        mka::audio::Result close_() override { return {}; }
+        std::vector<mka::audio::core::Endpoint> getEndPoints_() const override { return {}; }
+        mka::audio::core::Result open_(mka::audio::core::EndpointConfig const&) override { return {}; }
+        mka::audio::core::Result start_() override { return {}; }
+        mka::audio::core::Result stop_() override { return {}; }
+        mka::audio::core::Result close_() override { return {}; }
     };
 
     struct Recorder {
         std::mutex m;
-        std::vector<mka::audio::Event> events;
+        std::vector<mka::audio::core::Event> events;
         std::vector<std::thread::id> threads;
 
-        int count(const mka::audio::EventType t) {
+        int count(const mka::audio::core::EventType t) {
             std::lock_guard lock(m);
             int n = 0;
             for (const auto& e : events) n += (e.type == t);
@@ -46,7 +46,7 @@ namespace {
         }
     };
 
-    void record(void* user, const mka::audio::Event& e) noexcept {
+    void record(void* user, const mka::audio::core::Event& e) noexcept {
         auto* r = static_cast<Recorder*>(user);
         std::lock_guard lock(r->m);
         r->events.push_back(e);
@@ -134,11 +134,11 @@ TEST(BackendEventsTest, FailedIsDeliveredExactlyOnce) {
     startBackend(b);
 
     b.fakeFailure();
-    ASSERT_TRUE(waitFor([&] { return rec.count(mka::audio::EventType::Failed) == 1; }));
+    ASSERT_TRUE(waitFor([&] { return rec.count(mka::audio::core::EventType::Failed) == 1; }));
 
     b.fakeFailure();
     std::this_thread::sleep_for(60ms);
-    EXPECT_EQ(rec.count(mka::audio::EventType::Failed), 1);
+    EXPECT_EQ(rec.count(mka::audio::core::EventType::Failed), 1);
 
     ASSERT_TRUE(b.stop());
 }
@@ -152,7 +152,7 @@ TEST(BackendEventsTest, NoEventAfterStop) {
 
     b.fakeXRun();
     std::this_thread::sleep_for(60ms);
-    EXPECT_EQ(rec.count(mka::audio::EventType::XRun), 0);
+    EXPECT_EQ(rec.count(mka::audio::core::EventType::XRun), 0);
 }
 
 TEST(BackendEventsTest, SetEventHandlerRejectedWhileRunning) {
@@ -162,7 +162,7 @@ TEST(BackendEventsTest, SetEventHandlerRejectedWhileRunning) {
 
     auto res = b.setEventHandler(record, &rec);
     ASSERT_FALSE(res);
-    EXPECT_EQ(res.error(), mka::audio::ErrorType::InvalidState);
+    EXPECT_EQ(res.error(), mka::audio::core::ErrorType::InvalidState);
 
     ASSERT_TRUE(b.stop());
 }
@@ -180,9 +180,9 @@ TEST(BackendEventsTest, DestroyingWhileRunningIsSafe) {
 
 TEST(BackendRealtimeTest, UnknownUntilTheBackendReportsIt) {
     FakeBackend b;
-    EXPECT_EQ(b.status().realtime, mka::audio::RealtimeState::Unknown);
+    EXPECT_EQ(b.status().realtime, mka::audio::core::RealtimeState::Unknown);
     startBackend(b);
-    EXPECT_EQ(b.status().realtime, mka::audio::RealtimeState::Unknown);
+    EXPECT_EQ(b.status().realtime, mka::audio::core::RealtimeState::Unknown);
     ASSERT_TRUE(b.stop());
 }
 
@@ -191,9 +191,9 @@ TEST(BackendRealtimeTest, ReflectsGrantedAndDenied) {
     startBackend(b);
 
     b.fakeRealtime(true);
-    EXPECT_EQ(b.status().realtime, mka::audio::RealtimeState::Yes);
+    EXPECT_EQ(b.status().realtime, mka::audio::core::RealtimeState::Yes);
     b.fakeRealtime(false);
-    EXPECT_EQ(b.status().realtime, mka::audio::RealtimeState::No);
+    EXPECT_EQ(b.status().realtime, mka::audio::core::RealtimeState::No);
 
     ASSERT_TRUE(b.stop());
 }
@@ -205,6 +205,6 @@ TEST(BackendRealtimeTest, ResetToUnknownByNextStart) {
     ASSERT_TRUE(b.stop());
 
     ASSERT_TRUE(b.start());
-    EXPECT_EQ(b.status().realtime, mka::audio::RealtimeState::Unknown);
+    EXPECT_EQ(b.status().realtime, mka::audio::core::RealtimeState::Unknown);
     ASSERT_TRUE(b.stop());
 }
