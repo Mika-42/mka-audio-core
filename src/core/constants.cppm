@@ -7,7 +7,7 @@ module;
 export module mka.audio.constants;
 
 
-export namespace mka::audio {
+export namespace mka::audio::core {
     using SampleRate = std::uint32_t;
     using BufferSize = std::uint32_t;
 

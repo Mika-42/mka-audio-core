@@ -5,7 +5,7 @@ module;
 #include <array>
 export module mka.audio.backend.plateform;
 
-export namespace mka::audio {
+export namespace mka::audio::core {
     enum class AudioBackend {
         Alsa, PipeWire, Jack, PulseAudio, CoreAudio, Asio, Wasapi, Wmme, DirectSound
     };

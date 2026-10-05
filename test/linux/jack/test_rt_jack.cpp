@@ -22,14 +22,14 @@ import mka.audio.endpoint;
 import mka.audio.constants;
 
 namespace {
-    void outputCallback(void* user, const mka::audio::AudioProcessContext& ctx) noexcept {
+    void outputCallback(void* user, const mka::audio::core::AudioProcessContext& ctx) noexcept {
         rt_test::dirtyOutput(*static_cast<rt_test::ContractState*>(user), ctx);
     }
 
     struct ServerParams {
         bool ok = false;
-        mka::audio::SampleRate sampleRate = 0;
-        mka::audio::BufferSize bufferSize = 0;
+        mka::audio::core::SampleRate sampleRate = 0;
+        mka::audio::core::BufferSize bufferSize = 0;
     };
 
     // Rate et buffer sont imposés par le serveur : on les lit pour construire une config valide.
@@ -42,19 +42,19 @@ namespace {
         jack_client_close(c);
 
         const auto has = [](const auto& arr, const auto v) { return std::ranges::find(arr, v) != arr.end(); };
-        p.ok = has(mka::audio::supportedSampleRates, p.sampleRate)
-            && has(mka::audio::supportedBufferSizes, p.bufferSize);
+        p.ok = has(mka::audio::core::supportedSampleRates, p.sampleRate)
+            && has(mka::audio::core::supportedBufferSizes, p.bufferSize);
         return p;
     }
 
-    mka::audio::EndpointConfig makeConfig(const ServerParams& p) {
-        return mka::audio::EndpointConfig{
+    mka::audio::core::EndpointConfig makeConfig(const ServerParams& p) {
+        return mka::audio::core::EndpointConfig{
             .id = "",
-            .direction = mka::audio::Direction::Output,
+            .direction = mka::audio::core::Direction::Output,
             .inputChannels = 0,
             .outputChannels = 2,
             .sampleRate = p.sampleRate,
-            .format = mka::audio::Format::Float32,
+            .format = mka::audio::core::Format::Float32,
             .bufferSize = p.bufferSize,
         };
     }
@@ -95,7 +95,7 @@ ServerParams JackRtContractTest::server;
 // B7 : à l'entrée du callback, la sortie vaut toujours 0.
 TEST_F(JackRtContractTest, OutputIsZeroedBeforeCallback) {
     rt_test::ContractState state;
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.setProcessFunction(outputCallback, &state));
     ASSERT_TRUE(jack.open(makeConfig(server)));
     ASSERT_TRUE(jack.start());
@@ -116,7 +116,7 @@ TEST_F(JackRtContractTest, NoHeapAllocationOnAudioThread) {
     alloc_probe::ignoreCurrentThread();
 
     rt_test::ContractState state;
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.setProcessFunction(outputCallback, &state));
     ASSERT_TRUE(jack.open(makeConfig(server)));
 
@@ -124,7 +124,7 @@ TEST_F(JackRtContractTest, NoHeapAllocationOnAudioThread) {
     const auto started = jack.start();
     const bool enough = started
         && rt_test::waitFor([&] { return state.calls.load() >= rt_test::kMinCycles; });
-    const auto stopped = started ? jack.stop() : mka::audio::Result{};
+    const auto stopped = started ? jack.stop() : mka::audio::core::Result{};
     const std::size_t allocations = alloc_probe::disarm();
 
     ASSERT_TRUE(started);
@@ -140,7 +140,7 @@ TEST_F(JackRtContractTest, NoHeapAllocationOnAudioThread) {
 TEST_F(JackRtContractTest, NoCallbackProducesSilence) {
     // Phase 1 : salit les buffers de sortie.
     rt_test::ContractState dirty;
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.setProcessFunction(outputCallback, &dirty));
     ASSERT_TRUE(jack.open(makeConfig(server)));
     ASSERT_TRUE(jack.start());
@@ -181,7 +181,7 @@ TEST_F(JackRtContractTest, NoCallbackProducesSilence) {
 }
 
 namespace {
-    void countCallback(void* user, const mka::audio::AudioProcessContext& ctx) noexcept {
+    void countCallback(void* user, const mka::audio::core::AudioProcessContext& ctx) noexcept {
         rt_test::countAudioCall(*static_cast<rt_test::StopContractState*>(user), ctx);
     }
 }
@@ -190,7 +190,7 @@ namespace {
 // des lectures concurrentes de status().
 TEST_F(JackRtContractTest, NoCallbackAfterStopUnderStress) {
     rt_test::StopContractState state;
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.setProcessFunction(countCallback, &state));
     ASSERT_TRUE(jack.open(makeConfig(server)));
 
@@ -202,7 +202,7 @@ TEST_F(JackRtContractTest, NoCallbackAfterStopUnderStress) {
 // Aucun malloc/free (y compris dans libjack) sur le thread audio en régime établi.
 TEST_F(JackRtContractTest, NoLibcAllocationOnAudioThread) {
     rt_test::StopContractState state;
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.setProcessFunction(countCallback, &state));
     ASSERT_TRUE(jack.open(makeConfig(server)));
     ASSERT_TRUE(jack.start());

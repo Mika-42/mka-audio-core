@@ -16,7 +16,7 @@ import mka.audio.endpoint;
 import mka.audio.constants;
 import mka.audio.process;
 
-namespace mka::audio {
+namespace mka::audio::core {
 
     // Backend PulseAudio : "best effort", NON temps réel.
     //  - Le callback audio s'exécute sur le thread du pa_threaded_mainloop, qui

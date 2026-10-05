@@ -26,7 +26,7 @@ export import mka.audio.endpoint;
 export import mka.audio.constants;
 export import mka.audio.process;
 
-export namespace mka::audio {
+export namespace mka::audio::core {
 
     enum class EventType : std::uint8_t {
         // Au moins un xrun (sous/sur-dépassement de buffer) depuis l'événement précédent.

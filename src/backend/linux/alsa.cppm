@@ -48,7 +48,7 @@ import mka.audio.constants;
 import mka.audio.process;
 import mka.audio.convert;
 
-export namespace mka::audio {
+export namespace mka::audio::core {
     class ALSA final : public Backend {
     public:
         ~ALSA() override {

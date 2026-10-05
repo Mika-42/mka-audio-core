@@ -19,18 +19,18 @@ import mka.audio.error;
 import mka.audio.endpoint;
 import mka.audio.constants;
 
-static const char* fmtToStr(const mka::audio::Format format) {
+static const char* fmtToStr(const mka::audio::core::Format format) {
     switch (format) {
-        case mka::audio::Format::Int16: return "int16";
-        case mka::audio::Format::Int24: return "int24";
-        case mka::audio::Format::Int32: return "int32";
-        case mka::audio::Format::Float32: return "float32";
-        case mka::audio::Format::Float64: return "float64";
+        case mka::audio::core::Format::Int16: return "int16";
+        case mka::audio::core::Format::Int24: return "int24";
+        case mka::audio::core::Format::Int32: return "int32";
+        case mka::audio::core::Format::Float32: return "float32";
+        case mka::audio::core::Format::Float64: return "float64";
     }
     std::unreachable();
 }
 
-static void printCaps(const mka::audio::StreamCapabilities& caps) {
+static void printCaps(const mka::audio::core::StreamCapabilities& caps) {
     std::println("  channels: {} - {}", caps.minChannels, caps.maxChannels);
 
     std::print("  sample rates: ");
@@ -58,7 +58,7 @@ static void printCaps(const mka::audio::StreamCapabilities& caps) {
 // CI sans pour autant casser sur une machine sans configuration spécifique.
 
 TEST(PipeWireBackendTest, TestGetEndPoints) {
-    const mka::audio::PipeWire pw;
+    const mka::audio::core::PipeWire pw;
     const auto endpoints = pw.getEndPoints();
 
     for (const auto& endpoint : endpoints) {
@@ -100,7 +100,7 @@ TEST(PipeWireBackendTest, TestGetEndPoints) {
 }
 
 TEST(PipeWireBackendTest, TestGetEndPointsDoesNotThrow) {
-    const mka::audio::PipeWire pw;
+    const mka::audio::core::PipeWire pw;
     // getEndPoints_ ne doit jamais lancer d'exception, même sans serveur
     // PipeWire actif -- c'est ce que ce test garantit avant tout.
     ASSERT_NO_THROW({
@@ -109,7 +109,7 @@ TEST(PipeWireBackendTest, TestGetEndPointsDoesNotThrow) {
 }
 
 TEST(PipeWireBackendTest, TestGetEndPointsIsConsistentAcrossCalls) {
-    const mka::audio::PipeWire pw;
+    const mka::audio::core::PipeWire pw;
     const auto first = pw.getEndPoints();
     const auto second = pw.getEndPoints();
 
@@ -127,10 +127,10 @@ TEST(PipeWireBackendTest, TestGetEndPointsContainsExpectedDeviceIfConfigured) {
         GTEST_SKIP() << "MKA_TEST_PIPEWIRE_DEVICE_ID non défini, test ignoré";
     }
 
-    const mka::audio::PipeWire pw;
+    const mka::audio::core::PipeWire pw;
     const auto endpoints = pw.getEndPoints();
 
-    const auto it = std::ranges::find_if(endpoints, [&](const mka::audio::Endpoint& e) {
+    const auto it = std::ranges::find_if(endpoints, [&](const mka::audio::core::Endpoint& e) {
         return e.id == expectedId;
     });
 
@@ -140,7 +140,7 @@ TEST(PipeWireBackendTest, TestGetEndPointsContainsExpectedDeviceIfConfigured) {
 TEST(PipeWireBackendTest, TestGetEndPointsCallableWhileClosed) {
     // Backend::getEndPoints() n'a aucune garde d'état (contrairement à
     // open/start/stop/close) : il doit être appelable à tout moment.
-    const mka::audio::PipeWire pw;
+    const mka::audio::core::PipeWire pw;
     ASSERT_NO_THROW({
         auto endpoints = pw.getEndPoints();
         (void) endpoints;
@@ -158,15 +158,15 @@ namespace {
     struct DiscoveredEndpoint {
         bool available = false;
         std::string id;
-        mka::audio::SampleRate sampleRate = 0;
-        mka::audio::BufferSize bufferSize = 0;
+        mka::audio::core::SampleRate sampleRate = 0;
+        mka::audio::core::BufferSize bufferSize = 0;
         std::uint32_t channels = 0;
     };
 
     DiscoveredEndpoint discoverOutput() {
-        const mka::audio::PipeWire pw;
+        const mka::audio::core::PipeWire pw;
         const auto endpoints = pw.getEndPoints();
-        const auto it = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+        const auto it = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint& e) {
             return e.output.has_value() && !e.output->sampleRates.empty()
                 && !e.output->bufferSizes.empty() && e.output->maxChannels > 0;
         });
@@ -182,9 +182,9 @@ namespace {
     }
 
     DiscoveredEndpoint discoverInput() {
-        const mka::audio::PipeWire pw;
+        const mka::audio::core::PipeWire pw;
         const auto endpoints = pw.getEndPoints();
-        const auto it = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+        const auto it = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint& e) {
             return e.input.has_value() && !e.input->sampleRates.empty()
                 && !e.input->bufferSizes.empty() && e.input->maxChannels > 0;
         });
@@ -210,14 +210,14 @@ class PipeWireBackendHwTest : public ::testing::Test {
             input = discoverInput();
         }
 
-        static mka::audio::EndpointConfig makeOutputConfig() {
-            return mka::audio::EndpointConfig{
+        static mka::audio::core::EndpointConfig makeOutputConfig() {
+            return mka::audio::core::EndpointConfig{
                 .id = output.id,
-                .direction = mka::audio::Direction::Output,
+                .direction = mka::audio::core::Direction::Output,
                 .inputChannels = 0,
                 .outputChannels = output.channels,
                 .sampleRate = output.sampleRate,
-                .format = mka::audio::Format::Float32,
+                .format = mka::audio::core::Format::Float32,
                 .bufferSize = output.bufferSize,
             };
         }
@@ -234,14 +234,14 @@ DiscoveredEndpoint PipeWireBackendHwTest::input;
 //--- Test Open : garde-fous indépendants du matériel ------------------------
 
 TEST(PipeWireBackendTest, TestOpenDuplexRejectedConfigurationFailed) {
-    mka::audio::PipeWire pw;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::PipeWire pw;
+    const mka::audio::core::EndpointConfig config {
         .id = "",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 48000,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = 512,
     };
 
@@ -250,81 +250,81 @@ TEST(PipeWireBackendTest, TestOpenDuplexRejectedConfigurationFailed) {
     // d'ouverture, quels que soient les autres champs.
     auto ret = pw.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::ConfigurationFailed);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::ConfigurationFailed);
 }
 
 TEST(PipeWireBackendTest, TestOpenInvalidSampleRateRejected) {
-    mka::audio::PipeWire pw;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::PipeWire pw;
+    const mka::audio::core::EndpointConfig config {
         .id = "",
-        .direction = mka::audio::Direction::Output,
+        .direction = mka::audio::core::Direction::Output,
         .outputChannels = 2,
         .sampleRate = 44190, // n'appartient pas à supportedSampleRates
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = 512,
     };
 
     auto ret = pw.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::SampleRateNotSupported);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::SampleRateNotSupported);
 }
 
 TEST(PipeWireBackendTest, TestOpenInvalidBufferSizeRejected) {
-    mka::audio::PipeWire pw;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::PipeWire pw;
+    const mka::audio::core::EndpointConfig config {
         .id = "",
-        .direction = mka::audio::Direction::Output,
+        .direction = mka::audio::core::Direction::Output,
         .outputChannels = 2,
         .sampleRate = 48000,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = 500, // n'appartient pas à supportedBufferSizes
     };
 
     auto ret = pw.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::BufferSizeNotSupported);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::BufferSizeNotSupported);
 }
 
 TEST(PipeWireBackendTest, TestOpenInvalidFormatRejected) {
-    mka::audio::PipeWire pw;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::PipeWire pw;
+    const mka::audio::core::EndpointConfig config {
         .id = "",
-        .direction = mka::audio::Direction::Output,
+        .direction = mka::audio::core::Direction::Output,
         .outputChannels = 2,
         .sampleRate = 48000,
-        .format = mka::audio::Format::Int16, // seul Float32 est négocié ici
+        .format = mka::audio::core::Format::Int16, // seul Float32 est négocié ici
         .bufferSize = 512,
     };
 
     auto ret = pw.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::FormatNotSupported);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::FormatNotSupported);
 }
 
 TEST(PipeWireBackendTest, TestOpenInvalidChannelCountRejected) {
-    mka::audio::PipeWire pw;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::PipeWire pw;
+    const mka::audio::core::EndpointConfig config {
         .id = "",
-        .direction = mka::audio::Direction::Output,
+        .direction = mka::audio::core::Direction::Output,
         .outputChannels = 0, // aucun canal demandé
         .sampleRate = 48000,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = 512,
     };
 
     auto ret = pw.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::ChannelsNotSupported);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
 TEST(PipeWireBackendTest, TestOpenInvalidIDFails) {
-    mka::audio::PipeWire pw;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::PipeWire pw;
+    const mka::audio::core::EndpointConfig config {
         .id = "this-node-name-does-not-exist-999999",
-        .direction = mka::audio::Direction::Output,
+        .direction = mka::audio::core::Direction::Output,
         .outputChannels = 2,
         .sampleRate = 48000,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = 512,
     };
 
@@ -332,45 +332,45 @@ TEST(PipeWireBackendTest, TestOpenInvalidIDFails) {
     // vérification d'existence de l'endpoint.
     auto ret = pw.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::EndpointUnavailable);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::EndpointUnavailable);
 }
 
 TEST(PipeWireBackendTest, TestOpenIDWithWrongDirectionFails) {
     // Un endpoint capture-only (Audio/Source) demandé en Output (et
     // vice-versa) doit être refusé, même si l'id existe bel et bien.
-    const mka::audio::PipeWire discoverer;
+    const mka::audio::core::PipeWire discoverer;
     const auto endpoints = discoverer.getEndPoints();
 
-    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint& e) {
         return e.input.has_value() && !e.output.has_value();
     });
     if (it == endpoints.end()) {
         GTEST_SKIP() << "aucun endpoint input-only (sans capacité output) trouvé";
     }
 
-    mka::audio::PipeWire pw;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::PipeWire pw;
+    const mka::audio::core::EndpointConfig config {
         .id = it->id,
-        .direction = mka::audio::Direction::Output, // demandé en sortie
+        .direction = mka::audio::core::Direction::Output, // demandé en sortie
         .outputChannels = 2,
         .sampleRate = 48000,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = 512,
     };
 
     auto ret = pw.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::EndpointUnavailable);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::EndpointUnavailable);
 }
 
 TEST(PipeWireBackendTest, TestOpenFailureLeavesStateClosedAllowingRetry) {
-    mka::audio::PipeWire pw;
-    const mka::audio::EndpointConfig badConfig {
+    mka::audio::core::PipeWire pw;
+    const mka::audio::core::EndpointConfig badConfig {
         .id = "still-not-a-real-endpoint",
-        .direction = mka::audio::Direction::Output,
+        .direction = mka::audio::core::Direction::Output,
         .outputChannels = 2,
         .sampleRate = 48000,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = 512,
     };
 
@@ -383,12 +383,12 @@ TEST(PipeWireBackendTest, TestOpenFailureLeavesStateClosedAllowingRetry) {
         GTEST_SKIP() << "aucun endpoint de sortie disponible pour vérifier le retry";
     }
 
-    const mka::audio::EndpointConfig goodConfig {
+    const mka::audio::core::EndpointConfig goodConfig {
         .id = output.id,
-        .direction = mka::audio::Direction::Output,
+        .direction = mka::audio::core::Direction::Output,
         .outputChannels = output.channels,
         .sampleRate = output.sampleRate,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = output.bufferSize,
     };
 
@@ -400,19 +400,19 @@ TEST(PipeWireBackendTest, TestOpenFailureLeavesStateClosedAllowingRetry) {
 //--- Test Open : chemins nécessitant un endpoint réel -----------------------
 
 TEST_F(PipeWireBackendHwTest, TestOpenSucceed) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     auto ret = pw.open(makeOutputConfig());
     ASSERT_TRUE(ret);
     ASSERT_TRUE(pw.close());
 }
 
 TEST_F(PipeWireBackendHwTest, TestOpenTwiceFailsWithInvalidState) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
 
     auto ret = pw.open(makeOutputConfig());
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     ASSERT_TRUE(pw.close());
 }
@@ -420,15 +420,15 @@ TEST_F(PipeWireBackendHwTest, TestOpenTwiceFailsWithInvalidState) {
 //--- Test Start --------------------------------------------------------------
 
 TEST(PipeWireBackendTest, TestStartWithoutOpenFailsInvalidState) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
 
     auto ret = pw.start();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST_F(PipeWireBackendHwTest, TestStartSucceedsAfterOpen) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
 
     auto ret = pw.start();
@@ -439,13 +439,13 @@ TEST_F(PipeWireBackendHwTest, TestStartSucceedsAfterOpen) {
 }
 
 TEST_F(PipeWireBackendHwTest, TestStartTwiceFailsInvalidState) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
     ASSERT_TRUE(pw.start());
 
     auto ret = pw.start();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     ASSERT_TRUE(pw.stop());
     ASSERT_TRUE(pw.close());
@@ -455,7 +455,7 @@ namespace {
     std::atomic<bool> g_callbackCalled{false};
     std::atomic<std::thread::id> g_callbackThreadId{};
 
-    void testCallback(void*, const mka::audio::AudioProcessContext&) noexcept {
+    void testCallback(void*, const mka::audio::core::AudioProcessContext&) noexcept {
         g_callbackThreadId.store(std::this_thread::get_id());
         g_callbackCalled.store(true);
     }
@@ -465,7 +465,7 @@ TEST_F(PipeWireBackendHwTest, TestStartInvokesCallbackOnDifferentThread) {
     g_callbackCalled.store(false);
     g_callbackThreadId.store({});
 
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.setProcessFunction(testCallback));
     ASSERT_TRUE(pw.open(makeOutputConfig()));
 
@@ -484,20 +484,20 @@ TEST_F(PipeWireBackendHwTest, TestStartInvokesCallbackOnDifferentThread) {
 }
 
 TEST_F(PipeWireBackendHwTest, TestSetProcessFunctionFailsWhileRunning) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
     ASSERT_TRUE(pw.start());
 
     auto ret = pw.setProcessFunction(testCallback);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     ASSERT_TRUE(pw.stop());
     ASSERT_TRUE(pw.close());
 }
 
 TEST(PipeWireBackendTest, TestSetProcessFunctionAllowedWhenClosed) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
 
     auto ret = pw.setProcessFunction(testCallback);
     ASSERT_TRUE(ret);
@@ -506,26 +506,26 @@ TEST(PipeWireBackendTest, TestSetProcessFunctionAllowedWhenClosed) {
 //--- Test Stop ----------------------------------------------------------------
 
 TEST(PipeWireBackendTest, TestStopWithoutStartFailsInvalidState) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
 
     auto ret = pw.stop();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST_F(PipeWireBackendHwTest, TestStopWithoutStartAfterOpenFailsInvalidState) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
 
     auto ret = pw.stop();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     ASSERT_TRUE(pw.close());
 }
 
 TEST_F(PipeWireBackendHwTest, TestStopSucceedsAfterStart) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
     ASSERT_TRUE(pw.start());
 
@@ -536,14 +536,14 @@ TEST_F(PipeWireBackendHwTest, TestStopSucceedsAfterStart) {
 }
 
 TEST_F(PipeWireBackendHwTest, TestStopTwiceFailsInvalidState) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
     ASSERT_TRUE(pw.start());
     ASSERT_TRUE(pw.stop());
 
     auto ret = pw.stop();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     ASSERT_TRUE(pw.close());
 }
@@ -551,7 +551,7 @@ TEST_F(PipeWireBackendHwTest, TestStopTwiceFailsInvalidState) {
 TEST_F(PipeWireBackendHwTest, TestStopActuallyHaltsCallbackInvocations) {
     g_callbackCalled.store(false);
 
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.setProcessFunction(testCallback));
     ASSERT_TRUE(pw.open(makeOutputConfig()));
     ASSERT_TRUE(pw.start());
@@ -571,7 +571,7 @@ TEST_F(PipeWireBackendHwTest, TestStopActuallyHaltsCallbackInvocations) {
 }
 
 TEST_F(PipeWireBackendHwTest, TestStopAllowsReopenAndRestart) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
     ASSERT_TRUE(pw.start());
     ASSERT_TRUE(pw.stop());
@@ -586,15 +586,15 @@ TEST_F(PipeWireBackendHwTest, TestStopAllowsReopenAndRestart) {
 //--- Test Close -----------------------------------------------------------
 
 TEST(PipeWireBackendTest, TestCloseWithoutOpenFailsInvalidState) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
 
     auto ret = pw.close();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST_F(PipeWireBackendHwTest, TestCloseSucceedsAfterOpen) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
 
     auto ret = pw.close();
@@ -602,7 +602,7 @@ TEST_F(PipeWireBackendHwTest, TestCloseSucceedsAfterOpen) {
 }
 
 TEST_F(PipeWireBackendHwTest, TestCloseFailsWhileRunning) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
     ASSERT_TRUE(pw.start());
 
@@ -610,24 +610,24 @@ TEST_F(PipeWireBackendHwTest, TestCloseFailsWhileRunning) {
     // être refusé tant que le flux tourne encore (state == Running).
     auto ret = pw.close();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     ASSERT_TRUE(pw.stop());
     ASSERT_TRUE(pw.close());
 }
 
 TEST_F(PipeWireBackendHwTest, TestCloseTwiceFailsInvalidState) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
     ASSERT_TRUE(pw.close());
 
     auto ret = pw.close();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST_F(PipeWireBackendHwTest, TestCloseReleasesEndpointForReopen) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
     ASSERT_TRUE(pw.close());
 
@@ -640,7 +640,7 @@ TEST_F(PipeWireBackendHwTest, TestCloseReleasesEndpointForReopen) {
 }
 
 TEST_F(PipeWireBackendHwTest, TestFullLifecycleOpenStartStopClose) {
-    mka::audio::PipeWire pw;
+    mka::audio::core::PipeWire pw;
     ASSERT_TRUE(pw.open(makeOutputConfig()));
     ASSERT_TRUE(pw.start());
     ASSERT_TRUE(pw.stop());
@@ -653,7 +653,7 @@ namespace {
     double g_sinePhase = 0.0;
     double g_sinePhaseIncrement = 0.0;
 
-    void sineCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void sineCallback(void*, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         for (std::uint32_t i = 0; i < ctx.frames; ++i) {
             constexpr float amplitude = 0.2f;
             const auto sample = static_cast<float>(std::sin(g_sinePhase) * amplitude);
@@ -673,24 +673,24 @@ namespace {
 // Désactivé par défaut : joue réellement du son. À activer manuellement avec
 // --gtest_filter=*DISABLED_TestPlaySineWave* --gtest_also_run_disabled_tests
 TEST(PipeWireBackendTest, DISABLED_TestPlaySineWave) {
-    mka::audio::PipeWire discoverer;
+    mka::audio::core::PipeWire discoverer;
     const auto endpoints = discoverer.getEndPoints();
 
-    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint& e) {
         return e.output.has_value();
     });
     ASSERT_NE(it, endpoints.end());
 
     constexpr double frequency = 440.0;
-    const mka::audio::SampleRate sampleRate = it->output->sampleRates.front();
+    const mka::audio::core::SampleRate sampleRate = it->output->sampleRates.front();
 
-    mka::audio::PipeWire pw;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::PipeWire pw;
+    const mka::audio::core::EndpointConfig config {
         .id = it->id,
-        .direction = mka::audio::Direction::Output,
+        .direction = mka::audio::core::Direction::Output,
         .outputChannels = 2,
         .sampleRate = sampleRate,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = it->output->bufferSizes.front(),
     };
 
@@ -723,7 +723,7 @@ namespace {
     std::atomic<std::size_t> g_warmupFramesLeft{0};
     std::size_t g_recordCapacityFrames = 0;
 
-    void recordCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void recordCallback(void*, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         // Warm-up : ignore les premières frames (une seule écriture, depuis
         // le thread audio, donc load/store suffit).
         std::size_t start = 0;
@@ -752,7 +752,7 @@ namespace {
     std::size_t g_playbackLeadFrames = 0;
     std::size_t g_playbackTotalFrames = 0;
 
-    void playbackFromRecordCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void playbackFromRecordCallback(void*, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         const std::size_t pos = g_playbackPosition.load();
 
         for (std::uint32_t ch = 0; ch < ctx.output.count; ++ch) {
@@ -787,13 +787,13 @@ namespace {
 // Désactivé par défaut : enregistre réellement depuis un node d'entrée et
 // rejoue sur un node de sortie. À activer manuellement.
 TEST(PipeWireBackendTest, DISABLED_TestRecordAndPlayback) {
-    mka::audio::PipeWire discoverer;
+    mka::audio::core::PipeWire discoverer;
     const auto endpoints = discoverer.getEndPoints();
 
-    const auto inIt = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+    const auto inIt = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint& e) {
         return e.input.has_value();
     });
-    const auto outIt = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+    const auto outIt = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint& e) {
         return e.output.has_value();
     });
 
@@ -805,8 +805,8 @@ TEST(PipeWireBackendTest, DISABLED_TestRecordAndPlayback) {
     // 64 frames (front() de la liste) est un quantum minuscule : le moindre
     // retard du thread provoque un xrun audible comme un click. On prend une
     // taille confortable, la latence n'a aucune importance ici.
-    constexpr mka::audio::BufferSize bufferSize = 512;
-    const mka::audio::SampleRate sampleRate = inIt->input->sampleRates.front();
+    constexpr mka::audio::core::BufferSize bufferSize = 512;
+    const mka::audio::core::SampleRate sampleRate = inIt->input->sampleRates.front();
 
     const auto msToFrames = [&](const int ms) {
         return static_cast<std::size_t>(sampleRate) * ms / 1000;
@@ -822,13 +822,13 @@ TEST(PipeWireBackendTest, DISABLED_TestRecordAndPlayback) {
 
     // --- Phase 1 : enregistrement ---
     {
-        mka::audio::PipeWire recorder;
-        const mka::audio::EndpointConfig recordConfig {
+        mka::audio::core::PipeWire recorder;
+        const mka::audio::core::EndpointConfig recordConfig {
             .id = "alsa_input.pci-0000_35_00.6.HiFi__Mic1__source",
-            .direction = mka::audio::Direction::Input,
+            .direction = mka::audio::core::Direction::Input,
             .inputChannels = channels,
             .sampleRate = sampleRate,
-            .format = mka::audio::Format::Float32,
+            .format = mka::audio::core::Format::Float32,
             .bufferSize = bufferSize,
         };
 
@@ -856,13 +856,13 @@ TEST(PipeWireBackendTest, DISABLED_TestRecordAndPlayback) {
     g_playbackPosition.store(0);
 
     {
-        mka::audio::PipeWire player;
-        const mka::audio::EndpointConfig playbackConfig {
+        mka::audio::core::PipeWire player;
+        const mka::audio::core::EndpointConfig playbackConfig {
             .id = outIt->id,
-            .direction = mka::audio::Direction::Output,
+            .direction = mka::audio::core::Direction::Output,
             .outputChannels = channels,
             .sampleRate = sampleRate,
-            .format = mka::audio::Format::Float32,
+            .format = mka::audio::core::Format::Float32,
             .bufferSize = bufferSize,
         };
 

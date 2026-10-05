@@ -23,7 +23,7 @@ import mka.audio.endpoint;
 import mka.audio.constants;
 import mka.audio.process;
 
-namespace mka::audio {
+namespace mka::audio::core {
 
     namespace {
         using ClientPtr = std::unique_ptr<jack_client_t, decltype(&jack_client_close)>;

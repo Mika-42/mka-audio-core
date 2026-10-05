@@ -37,18 +37,18 @@ import mka.audio.constants;
 
 //--- Utilitaires ------------------------------------------------------------
 
-static const char* fmtToStr(const mka::audio::Format format) {
+static const char* fmtToStr(const mka::audio::core::Format format) {
     switch (format) {
-        case mka::audio::Format::Int16: return "int16";
-        case mka::audio::Format::Int24: return "int24";
-        case mka::audio::Format::Int32: return "int32";
-        case mka::audio::Format::Float32: return "float32";
-        case mka::audio::Format::Float64: return "float64";
+        case mka::audio::core::Format::Int16: return "int16";
+        case mka::audio::core::Format::Int24: return "int24";
+        case mka::audio::core::Format::Int32: return "int32";
+        case mka::audio::core::Format::Float32: return "float32";
+        case mka::audio::core::Format::Float64: return "float64";
     }
     std::unreachable();
 }
 
-static void printCaps(const mka::audio::StreamCapabilities& caps) {
+static void printCaps(const mka::audio::core::StreamCapabilities& caps) {
     std::println("  channels: {} - {}", caps.minChannels, caps.maxChannels);
 
     std::print("  sample rates: ");
@@ -84,19 +84,19 @@ namespace {
         g_pointersValid.store(false);
     }
 
-    void silence(const mka::audio::AudioProcessContext& ctx) noexcept {
+    void silence(const mka::audio::core::AudioProcessContext& ctx) noexcept {
         for (std::uint32_t ch = 0; ch < ctx.output.count; ++ch) {
             std::fill_n(ctx.output.channels[ch], ctx.frames, 0.0f);
         }
     }
 
-    void testCallback(void*, const mka::audio::AudioProcessContext& ctx) noexcept {
+    void testCallback(void*, const mka::audio::core::AudioProcessContext& ctx) noexcept {
         g_callbackThreadId.store(std::this_thread::get_id());
         g_callbackCalled.store(true);
         silence(ctx);
     }
 
-    void inspectCallback(void*, const mka::audio::AudioProcessContext& ctx) noexcept {
+    void inspectCallback(void*, const mka::audio::core::AudioProcessContext& ctx) noexcept {
         bool valid = true;
         for (std::uint32_t ch = 0; ch < ctx.input.count; ++ch) valid = valid && ctx.input.channels[ch] != nullptr;
         for (std::uint32_t ch = 0; ch < ctx.output.count; ++ch) valid = valid && ctx.output.channels[ch] != nullptr;
@@ -148,19 +148,19 @@ namespace {
         return count;
     }
 
-    mka::audio::EndpointConfig validOutputConfig(std::string id = "") {
-        return mka::audio::EndpointConfig{
+    mka::audio::core::EndpointConfig validOutputConfig(std::string id = "") {
+        return mka::audio::core::EndpointConfig{
             .id = std::move(id),
-            .direction = mka::audio::Direction::Output,
+            .direction = mka::audio::core::Direction::Output,
             .inputChannels = 0,
             .outputChannels = 2,
             .sampleRate = 48000,
-            .format = mka::audio::Format::Float32,
+            .format = mka::audio::core::Format::Float32,
             .bufferSize = 512,
         };
     }
 
-    void expectOpenError(mka::audio::JACK& jack, const mka::audio::EndpointConfig& cfg, const mka::audio::ErrorType expected) {
+    void expectOpenError(mka::audio::core::JACK& jack, const mka::audio::core::EndpointConfig& cfg, const mka::audio::core::ErrorType expected) {
         const auto ret = jack.open(cfg);
         ASSERT_FALSE(ret) << "open() aurait dû échouer";
         EXPECT_EQ(ret.error(), expected);
@@ -170,7 +170,7 @@ namespace {
 //--- Test GetEndPoints ------------------------------------------------------
 
 TEST(JackBackendTest, TestGetEndPoints) {
-    const mka::audio::JACK jack;
+    const mka::audio::core::JACK jack;
 
     for (const auto endpoints = jack.getEndPoints(); const auto& endpoint : endpoints) {
         EXPECT_TRUE(endpoint.input.has_value() || endpoint.output.has_value())
@@ -211,14 +211,14 @@ TEST(JackBackendTest, TestGetEndPoints) {
 }
 
 TEST(JackBackendTest, TestGetEndPointsDoesNotThrow) {
-    const mka::audio::JACK jack;
+    const mka::audio::core::JACK jack;
     ASSERT_NO_THROW({
         auto endpoints = jack.getEndPoints();
     });
 }
 
 TEST(JackBackendTest, TestGetEndPointsCallableWhileClosed) {
-    const mka::audio::JACK jack;
+    const mka::audio::core::JACK jack;
     ASSERT_NO_THROW({
         auto endpoints = jack.getEndPoints();
         (void) endpoints;
@@ -227,7 +227,7 @@ TEST(JackBackendTest, TestGetEndPointsCallableWhileClosed) {
 
 TEST(JackBackendTest, TestGetEndPointsIdsAreUnique) {
     // Les ports sont regroupés par client : un client = un seul endpoint.
-    const mka::audio::JACK jack;
+    const mka::audio::core::JACK jack;
     const auto endpoints = jack.getEndPoints();
 
     std::vector<std::string> ids;
@@ -238,16 +238,16 @@ TEST(JackBackendTest, TestGetEndPointsIdsAreUnique) {
 }
 
 TEST(JackBackendTest, TestGetEndPointsCapabilitiesReflectServer) {
-    const mka::audio::JACK jack;
+    const mka::audio::core::JACK jack;
     const auto endpoints = jack.getEndPoints();
     if (endpoints.empty()) {
         GTEST_SKIP() << "aucun endpoint (serveur JACK absent ?)";
     }
 
-    std::optional<mka::audio::SampleRate> rate;
-    std::optional<mka::audio::BufferSize> bufferSize;
+    std::optional<mka::audio::core::SampleRate> rate;
+    std::optional<mka::audio::core::BufferSize> bufferSize;
 
-    const auto check = [&](const mka::audio::StreamCapabilities& caps) {
+    const auto check = [&](const mka::audio::core::StreamCapabilities& caps) {
         EXPECT_EQ(caps.minChannels, 1u);
         EXPECT_GE(caps.maxChannels, 1u);
 
@@ -255,7 +255,7 @@ TEST(JackBackendTest, TestGetEndPointsCapabilitiesReflectServer) {
         ASSERT_EQ(caps.sampleRates.size(), 1u);
         ASSERT_EQ(caps.bufferSizes.size(), 1u);
         ASSERT_EQ(caps.formats.size(), 1u);
-        EXPECT_TRUE(caps.formats.front() == mka::audio::Format::Float32);
+        EXPECT_TRUE(caps.formats.front() == mka::audio::core::Format::Float32);
 
         if (!rate) rate = caps.sampleRates.front();
         if (!bufferSize) bufferSize = caps.bufferSizes.front();
@@ -275,10 +275,10 @@ TEST(JackBackendTest, TestGetEndPointsContainsExpectedDeviceIfConfigured) {
         GTEST_SKIP() << "MKA_TEST_JACK_DEVICE_ID non défini, test ignoré";
     }
 
-    const mka::audio::JACK jack;
+    const mka::audio::core::JACK jack;
     const auto endpoints = jack.getEndPoints();
 
-    const auto it = std::ranges::find_if(endpoints, [&](const mka::audio::Endpoint& e) {
+    const auto it = std::ranges::find_if(endpoints, [&](const mka::audio::core::Endpoint& e) {
         return e.id == expectedId;
     });
     ASSERT_NE(it, endpoints.end()) << "endpoint attendu introuvable: " << expectedId;
@@ -287,122 +287,122 @@ TEST(JackBackendTest, TestGetEndPointsContainsExpectedDeviceIfConfigured) {
 //--- Test Open : garde-fous indépendants du serveur -------------------------
 
 TEST(JackBackendTest, TestOpenInvalidSampleRateRejected) {
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = validOutputConfig();
     cfg.sampleRate = 44190; // n'appartient pas à supportedSampleRates
-    expectOpenError(jack, cfg, mka::audio::ErrorType::SampleRateNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::SampleRateNotSupported);
 }
 
 TEST(JackBackendTest, TestOpenInvalidBufferSizeRejected) {
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = validOutputConfig();
     cfg.bufferSize = 500; // n'appartient pas à supportedBufferSizes
-    expectOpenError(jack, cfg, mka::audio::ErrorType::BufferSizeNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::BufferSizeNotSupported);
 }
 
 TEST(JackBackendTest, TestOpenInvalidFormatRejected) {
 
-    mka::audio::JACK jack;
-    for (const auto format : mka::audio::supportedFormats) {
-        if (format == mka::audio::Format::Float32) continue;
+    mka::audio::core::JACK jack;
+    for (const auto format : mka::audio::core::supportedFormats) {
+        if (format == mka::audio::core::Format::Float32) continue;
         SCOPED_TRACE(fmtToStr(format));
 
         auto cfg = validOutputConfig();
         cfg.format = format;
-        expectOpenError(jack, cfg, mka::audio::ErrorType::FormatNotSupported);
+        expectOpenError(jack, cfg, mka::audio::core::ErrorType::FormatNotSupported);
     }
 }
 
 TEST(JackBackendTest, TestOpenInputZeroChannelsRejected) {
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = validOutputConfig();
-    cfg.direction = mka::audio::Direction::Input;
+    cfg.direction = mka::audio::core::Direction::Input;
     cfg.inputChannels = 0;
     cfg.outputChannels = 2; // ignoré pour une direction Input
-    expectOpenError(jack, cfg, mka::audio::ErrorType::ChannelsNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
 TEST(JackBackendTest, TestOpenOutputZeroChannelsRejected) {
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = validOutputConfig();
     cfg.inputChannels = 2; // ignoré pour une direction Output
     cfg.outputChannels = 0;
-    expectOpenError(jack, cfg, mka::audio::ErrorType::ChannelsNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
 TEST(JackBackendTest, TestOpenDuplexZeroInputChannelsRejected) {
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = validOutputConfig();
-    cfg.direction = mka::audio::Direction::Duplex;
+    cfg.direction = mka::audio::core::Direction::Duplex;
     cfg.inputChannels = 0;
     cfg.outputChannels = 2;
-    expectOpenError(jack, cfg, mka::audio::ErrorType::ChannelsNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
 TEST(JackBackendTest, TestOpenDuplexZeroOutputChannelsRejected) {
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = validOutputConfig();
-    cfg.direction = mka::audio::Direction::Duplex;
+    cfg.direction = mka::audio::core::Direction::Duplex;
     cfg.inputChannels = 2;
     cfg.outputChannels = 0;
-    expectOpenError(jack, cfg, mka::audio::ErrorType::ChannelsNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
 TEST(JackBackendTest, TestOpenValidationErrorPrecedence) {
 
-    mka::audio::JACK jack;
-    mka::audio::EndpointConfig cfg{
+    mka::audio::core::JACK jack;
+    mka::audio::core::EndpointConfig cfg{
         .id = "",
-        .direction = mka::audio::Direction::Output,
+        .direction = mka::audio::core::Direction::Output,
         .inputChannels = 0,
         .outputChannels = 0,
         .sampleRate = 44190,
-        .format = mka::audio::Format::Int16,
+        .format = mka::audio::core::Format::Int16,
         .bufferSize = 500,
     };
 
-    expectOpenError(jack, cfg, mka::audio::ErrorType::SampleRateNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::SampleRateNotSupported);
     cfg.sampleRate = 48000;
-    expectOpenError(jack, cfg, mka::audio::ErrorType::BufferSizeNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::BufferSizeNotSupported);
     cfg.bufferSize = 512;
-    expectOpenError(jack, cfg, mka::audio::ErrorType::FormatNotSupported);
-    cfg.format = mka::audio::Format::Float32;
-    expectOpenError(jack, cfg, mka::audio::ErrorType::ChannelsNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::FormatNotSupported);
+    cfg.format = mka::audio::core::Format::Float32;
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
 TEST(JackBackendTest, TestOpenInvalidIDFails) {
-    mka::audio::JACK jack;
-    expectOpenError(jack, validOutputConfig("this-client-does-not-exist-999999"), mka::audio::ErrorType::EndpointUnavailable);
+    mka::audio::core::JACK jack;
+    expectOpenError(jack, validOutputConfig("this-client-does-not-exist-999999"), mka::audio::core::ErrorType::EndpointUnavailable);
 }
 
 //--- Test Start / Stop / Close : garde-fous d'état --------------------------
 
 TEST(JackBackendTest, TestStartWithoutOpenFailsInvalidState) {
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
 
     auto ret = jack.start();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST(JackBackendTest, TestStopWithoutStartFailsInvalidState) {
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
 
     auto ret = jack.stop();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST(JackBackendTest, TestCloseWithoutOpenFailsInvalidState) {
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
 
     auto ret = jack.close();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST(JackBackendTest, TestSetProcessFunctionAllowedWhenClosed) {
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
 
     auto ret = jack.setProcessFunction(testCallback);
     ASSERT_TRUE(ret);
@@ -410,18 +410,18 @@ TEST(JackBackendTest, TestSetProcessFunctionAllowedWhenClosed) {
 
 TEST(JackBackendTest, TestFailedOpenDoesNotChangeState) {
     // Après un open échoué, l'état reste Closed : start/stop/close refusés.
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = validOutputConfig();
-    cfg.format = mka::audio::Format::Int16;
-    expectOpenError(jack, cfg, mka::audio::ErrorType::FormatNotSupported);
+    cfg.format = mka::audio::core::Format::Int16;
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::FormatNotSupported);
 
     auto start = jack.start();
     ASSERT_FALSE(start);
-    EXPECT_EQ(start.error(), mka::audio::ErrorType::InvalidState);
+    EXPECT_EQ(start.error(), mka::audio::core::ErrorType::InvalidState);
 
     auto close = jack.close();
     ASSERT_FALSE(close);
-    EXPECT_EQ(close.error(), mka::audio::ErrorType::InvalidState);
+    EXPECT_EQ(close.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 //--- Fixture pour les tests nécessitant un serveur JACK ---------------------
@@ -430,14 +430,14 @@ namespace {
     struct DiscoveredEndpoint {
         bool available = false;
         std::string id;
-        mka::audio::SampleRate sampleRate = 0;
-        mka::audio::BufferSize bufferSize = 0;
+        mka::audio::core::SampleRate sampleRate = 0;
+        mka::audio::core::BufferSize bufferSize = 0;
         std::uint32_t inMax = 0;
         std::uint32_t outMax = 0;
     };
 
     DiscoveredEndpoint discoverEndpoint(const bool needInput, const bool needOutput) {
-        const mka::audio::JACK jack;
+        const mka::audio::core::JACK jack;
         for (const auto& e : jack.getEndPoints()) {
             if (needInput && !e.input) continue;
             if (needOutput && !e.output) continue;
@@ -447,8 +447,8 @@ namespace {
 
             const auto rate = caps.sampleRates.front();
             const auto size = caps.bufferSizes.front();
-            if (std::ranges::find(mka::audio::supportedSampleRates, rate) == mka::audio::supportedSampleRates.end()) continue;
-            if (std::ranges::find(mka::audio::supportedBufferSizes, size) == mka::audio::supportedBufferSizes.end()) continue;
+            if (std::ranges::find(mka::audio::core::supportedSampleRates, rate) == mka::audio::core::supportedSampleRates.end()) continue;
+            if (std::ranges::find(mka::audio::core::supportedBufferSizes, size) == mka::audio::core::supportedBufferSizes.end()) continue;
 
             return DiscoveredEndpoint{
                 .available = true,
@@ -482,38 +482,38 @@ class JackBackendHwTest : public ::testing::Test {
             duplex = discoverEndpoint(true, true);
         }
 
-        static mka::audio::EndpointConfig makeOutputConfig() {
-            return mka::audio::EndpointConfig{
+        static mka::audio::core::EndpointConfig makeOutputConfig() {
+            return mka::audio::core::EndpointConfig{
                 .id = output.id,
-                .direction = mka::audio::Direction::Output,
+                .direction = mka::audio::core::Direction::Output,
                 .inputChannels = 0,
                 .outputChannels = std::min<std::uint32_t>(2, output.outMax),
                 .sampleRate = output.sampleRate,
-                .format = mka::audio::Format::Float32,
+                .format = mka::audio::core::Format::Float32,
                 .bufferSize = output.bufferSize,
             };
         }
 
-        static mka::audio::EndpointConfig makeInputConfig() {
-            return mka::audio::EndpointConfig{
+        static mka::audio::core::EndpointConfig makeInputConfig() {
+            return mka::audio::core::EndpointConfig{
                 .id = input.id,
-                .direction = mka::audio::Direction::Input,
+                .direction = mka::audio::core::Direction::Input,
                 .inputChannels = std::min<std::uint32_t>(2, input.inMax),
                 .outputChannels = 0,
                 .sampleRate = input.sampleRate,
-                .format = mka::audio::Format::Float32,
+                .format = mka::audio::core::Format::Float32,
                 .bufferSize = input.bufferSize,
             };
         }
 
-        static mka::audio::EndpointConfig makeDuplexConfig() {
-            return mka::audio::EndpointConfig{
+        static mka::audio::core::EndpointConfig makeDuplexConfig() {
+            return mka::audio::core::EndpointConfig{
                 .id = duplex.id,
-                .direction = mka::audio::Direction::Duplex,
+                .direction = mka::audio::core::Direction::Duplex,
                 .inputChannels = std::min<std::uint32_t>(2, duplex.inMax),
                 .outputChannels = std::min<std::uint32_t>(2, duplex.outMax),
                 .sampleRate = duplex.sampleRate,
-                .format = mka::audio::Format::Float32,
+                .format = mka::audio::core::Format::Float32,
                 .bufferSize = duplex.bufferSize,
             };
         }
@@ -527,7 +527,7 @@ DiscoveredEndpoint JackBackendHwTest::duplex;
 TEST_F(JackBackendHwTest, TestGetEndPointsSeesOwnClientWhileRunning) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.setProcessFunction(testCallback));
     ASSERT_TRUE(jack.open(makeOutputConfig()));
 
@@ -535,7 +535,7 @@ TEST_F(JackBackendHwTest, TestGetEndPointsSeesOwnClientWhileRunning) {
 
     const bool seen = waitFor([&] {
         const auto endpoints = jack.getEndPoints();
-        return std::ranges::any_of(endpoints, [](const mka::audio::Endpoint& e) {
+        return std::ranges::any_of(endpoints, [](const mka::audio::core::Endpoint& e) {
             return startsWith(e.id, "mka-audio") && e.input.has_value();
         });
     });
@@ -548,7 +548,7 @@ TEST_F(JackBackendHwTest, TestGetEndPointsSeesOwnClientWhileRunning) {
 TEST_F(JackBackendHwTest, TestGetEndPointsCallableWhileRunning) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.setProcessFunction(testCallback));
     ASSERT_TRUE(jack.open(makeOutputConfig()));
     ASSERT_TRUE(jack.start());
@@ -567,113 +567,113 @@ TEST_F(JackBackendHwTest, TestGetEndPointsCallableWhileRunning) {
 TEST_F(JackBackendHwTest, TestOpenServerSampleRateMismatchRejected) {
     SKIP_UNLESS(output);
 
-    const auto other = std::ranges::find_if(mka::audio::supportedSampleRates, [&](const auto rate) {
+    const auto other = std::ranges::find_if(mka::audio::core::supportedSampleRates, [&](const auto rate) {
         return rate != output.sampleRate;
     });
-    ASSERT_NE(other, mka::audio::supportedSampleRates.end());
+    ASSERT_NE(other, mka::audio::core::supportedSampleRates.end());
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = makeOutputConfig();
     cfg.sampleRate = *other;
-    expectOpenError(jack, cfg, mka::audio::ErrorType::SampleRateNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::SampleRateNotSupported);
 }
 
 TEST_F(JackBackendHwTest, TestOpenServerBufferSizeMismatchRejected) {
     SKIP_UNLESS(output);
 
-    const auto other = std::ranges::find_if(mka::audio::supportedBufferSizes, [&](const auto size) {
+    const auto other = std::ranges::find_if(mka::audio::core::supportedBufferSizes, [&](const auto size) {
         return size != output.bufferSize;
     });
-    ASSERT_NE(other, mka::audio::supportedBufferSizes.end());
+    ASSERT_NE(other, mka::audio::core::supportedBufferSizes.end());
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = makeOutputConfig();
     cfg.bufferSize = *other;
-    expectOpenError(jack, cfg, mka::audio::ErrorType::BufferSizeNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::BufferSizeNotSupported);
 }
 
 TEST_F(JackBackendHwTest, TestOpenTooManyOutputChannelsRejected) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = makeOutputConfig();
     cfg.outputChannels = output.outMax + 1; // plus que de ports disponibles
-    expectOpenError(jack, cfg, mka::audio::ErrorType::ChannelsNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
 TEST_F(JackBackendHwTest, TestOpenTooManyInputChannelsRejected) {
     SKIP_UNLESS(input);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = makeInputConfig();
     cfg.inputChannels = input.inMax + 1;
-    expectOpenError(jack, cfg, mka::audio::ErrorType::ChannelsNotSupported);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
 TEST_F(JackBackendHwTest, TestOpenInputOnlyEndpointAsOutputFails) {
 
     SKIP_UNLESS(output);
 
-    const mka::audio::JACK discoverer;
+    const mka::audio::core::JACK discoverer;
     const auto endpoints = discoverer.getEndPoints();
-    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint& e) {
         return e.input.has_value() && !e.output.has_value();
     });
     if (it == endpoints.end()) GTEST_SKIP() << "aucun endpoint source-only trouvé";
 
-    mka::audio::JACK jack;
-    expectOpenError(jack, validOutputConfig(it->id), mka::audio::ErrorType::EndpointUnavailable);
+    mka::audio::core::JACK jack;
+    expectOpenError(jack, validOutputConfig(it->id), mka::audio::core::ErrorType::EndpointUnavailable);
 }
 
 TEST_F(JackBackendHwTest, TestOpenOutputOnlyEndpointAsInputFails) {
     SKIP_UNLESS(output);
 
-    const mka::audio::JACK discoverer;
+    const mka::audio::core::JACK discoverer;
     const auto endpoints = discoverer.getEndPoints();
-    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint& e) {
         return e.output.has_value() && !e.input.has_value();
     });
     if (it == endpoints.end()) GTEST_SKIP() << "aucun endpoint destination-only trouvé";
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = validOutputConfig(it->id);
-    cfg.direction = mka::audio::Direction::Input;
+    cfg.direction = mka::audio::core::Direction::Input;
     cfg.inputChannels = 2;
     cfg.outputChannels = 0;
-    expectOpenError(jack, cfg, mka::audio::ErrorType::EndpointUnavailable);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::EndpointUnavailable);
 }
 
 TEST_F(JackBackendHwTest, TestOpenDuplexOnOneSidedEndpointFails) {
 
     SKIP_UNLESS(output);
 
-    const mka::audio::JACK discoverer;
+    const mka::audio::core::JACK discoverer;
     const auto endpoints = discoverer.getEndPoints();
-    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint& e) {
         return e.input.has_value() != e.output.has_value();
     });
     if (it == endpoints.end()) GTEST_SKIP() << "aucun endpoint à sens unique trouvé";
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = validOutputConfig(it->id);
-    cfg.direction = mka::audio::Direction::Duplex;
+    cfg.direction = mka::audio::core::Direction::Duplex;
     cfg.inputChannels = 1;
     cfg.outputChannels = 1;
-    expectOpenError(jack, cfg, mka::audio::ErrorType::EndpointUnavailable);
+    expectOpenError(jack, cfg, mka::audio::core::ErrorType::EndpointUnavailable);
 }
 
 TEST_F(JackBackendHwTest, TestOpenFailureLeavesStateClosedAllowingRetry) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
 
     auto badId = makeOutputConfig();
     badId.id = "still-not-a-real-client";
-    expectOpenError(jack, badId, mka::audio::ErrorType::EndpointUnavailable);
+    expectOpenError(jack, badId, mka::audio::core::ErrorType::EndpointUnavailable);
 
     auto tooMany = makeOutputConfig();
     tooMany.outputChannels = output.outMax + 1;
-    expectOpenError(jack, tooMany, mka::audio::ErrorType::ChannelsNotSupported);
+    expectOpenError(jack, tooMany, mka::audio::core::ErrorType::ChannelsNotSupported);
 
     ASSERT_TRUE(jack.open(makeOutputConfig()));
     EXPECT_TRUE(jack.close());
@@ -684,7 +684,7 @@ TEST_F(JackBackendHwTest, TestOpenFailureLeavesStateClosedAllowingRetry) {
 TEST_F(JackBackendHwTest, TestOpenSucceed) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto ret = jack.open(makeOutputConfig());
     ASSERT_TRUE(ret);
     EXPECT_TRUE(jack.close());
@@ -693,7 +693,7 @@ TEST_F(JackBackendHwTest, TestOpenSucceed) {
 TEST_F(JackBackendHwTest, TestOpenInputSucceed) {
     SKIP_UNLESS(input);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeInputConfig()));
     EXPECT_TRUE(jack.close());
 }
@@ -701,7 +701,7 @@ TEST_F(JackBackendHwTest, TestOpenInputSucceed) {
 TEST_F(JackBackendHwTest, TestOpenDuplexSucceed) {
     SKIP_UNLESS(duplex);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeDuplexConfig()));
     EXPECT_TRUE(jack.close());
 }
@@ -709,7 +709,7 @@ TEST_F(JackBackendHwTest, TestOpenDuplexSucceed) {
 TEST_F(JackBackendHwTest, TestOpenWithEmptyIdSucceeds) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = makeOutputConfig();
     cfg.id = "";
     ASSERT_TRUE(jack.open(cfg));
@@ -722,7 +722,7 @@ TEST_F(JackBackendHwTest, TestOpenOutputIgnoresInputChannelCount) {
     SKIP_UNLESS(output);
 
     resetCallbackState();
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = makeOutputConfig();
     cfg.inputChannels = 99; // ignoré pour une direction Output
     ASSERT_TRUE(jack.setProcessFunction(inspectCallback));
@@ -741,7 +741,7 @@ TEST_F(JackBackendHwTest, TestOpenInputIgnoresOutputChannelCount) {
     SKIP_UNLESS(input);
 
     resetCallbackState();
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     auto cfg = makeInputConfig();
     cfg.outputChannels = 99; // ignoré pour une direction Input
     ASSERT_TRUE(jack.setProcessFunction(inspectCallback));
@@ -759,12 +759,12 @@ TEST_F(JackBackendHwTest, TestOpenInputIgnoresOutputChannelCount) {
 TEST_F(JackBackendHwTest, TestOpenTwiceFailsWithInvalidState) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeOutputConfig()));
 
     auto ret = jack.open(makeOutputConfig());
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     EXPECT_TRUE(jack.close());
 }
@@ -774,7 +774,7 @@ TEST_F(JackBackendHwTest, TestOpenTwiceFailsWithInvalidState) {
 TEST_F(JackBackendHwTest, TestStartSucceedsAfterOpen) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeOutputConfig()));
 
     auto ret = jack.start();
@@ -787,13 +787,13 @@ TEST_F(JackBackendHwTest, TestStartSucceedsAfterOpen) {
 TEST_F(JackBackendHwTest, TestStartTwiceFailsInvalidState) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeOutputConfig()));
     ASSERT_TRUE(jack.start());
 
     auto ret = jack.start();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     EXPECT_TRUE(jack.stop());
     EXPECT_TRUE(jack.close());
@@ -803,7 +803,7 @@ TEST_F(JackBackendHwTest, TestStartInvokesCallbackOnDifferentThread) {
     SKIP_UNLESS(output);
 
     resetCallbackState();
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.setProcessFunction(testCallback));
     ASSERT_TRUE(jack.open(makeOutputConfig()));
 
@@ -821,7 +821,7 @@ TEST_F(JackBackendHwTest, TestCallbackReceivesConfiguredOutputBuffers) {
     SKIP_UNLESS(output);
 
     resetCallbackState();
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     const auto cfg = makeOutputConfig();
     ASSERT_TRUE(jack.setProcessFunction(inspectCallback));
     ASSERT_TRUE(jack.open(cfg));
@@ -841,7 +841,7 @@ TEST_F(JackBackendHwTest, TestCallbackReceivesConfiguredInputBuffers) {
     SKIP_UNLESS(input);
 
     resetCallbackState();
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     const auto cfg = makeInputConfig();
     ASSERT_TRUE(jack.setProcessFunction(inspectCallback));
     ASSERT_TRUE(jack.open(cfg));
@@ -860,13 +860,13 @@ TEST_F(JackBackendHwTest, TestCallbackReceivesConfiguredInputBuffers) {
 TEST_F(JackBackendHwTest, TestSetProcessFunctionFailsWhileRunning) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeOutputConfig()));
     ASSERT_TRUE(jack.start());
 
     auto ret = jack.setProcessFunction(testCallback);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     EXPECT_TRUE(jack.stop());
     EXPECT_TRUE(jack.close());
@@ -875,7 +875,7 @@ TEST_F(JackBackendHwTest, TestSetProcessFunctionFailsWhileRunning) {
 TEST_F(JackBackendHwTest, TestStartConnectsEndpointPorts) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     const auto cfg = makeOutputConfig();
     ASSERT_TRUE(jack.open(cfg));
     ASSERT_TRUE(jack.start());
@@ -891,7 +891,7 @@ TEST_F(JackBackendHwTest, TestStartConnectsEndpointPorts) {
 TEST_F(JackBackendHwTest, TestStartConnectsInputEndpointPorts) {
     SKIP_UNLESS(input);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     const auto cfg = makeInputConfig();
     ASSERT_TRUE(jack.open(cfg));
     ASSERT_TRUE(jack.start());
@@ -909,12 +909,12 @@ TEST_F(JackBackendHwTest, TestStartConnectsInputEndpointPorts) {
 TEST_F(JackBackendHwTest, TestStopWithoutStartAfterOpenFailsInvalidState) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeOutputConfig()));
 
     auto ret = jack.stop();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     EXPECT_TRUE(jack.close());
 }
@@ -922,7 +922,7 @@ TEST_F(JackBackendHwTest, TestStopWithoutStartAfterOpenFailsInvalidState) {
 TEST_F(JackBackendHwTest, TestStopSucceedsAfterStart) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeOutputConfig()));
     ASSERT_TRUE(jack.start());
 
@@ -935,14 +935,14 @@ TEST_F(JackBackendHwTest, TestStopSucceedsAfterStart) {
 TEST_F(JackBackendHwTest, TestStopTwiceFailsInvalidState) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeOutputConfig()));
     ASSERT_TRUE(jack.start());
     ASSERT_TRUE(jack.stop());
 
     auto ret = jack.stop();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     EXPECT_TRUE(jack.close());
 }
@@ -951,7 +951,7 @@ TEST_F(JackBackendHwTest, TestStopActuallyHaltsCallbackInvocations) {
     SKIP_UNLESS(output);
 
     resetCallbackState();
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.setProcessFunction(testCallback));
     ASSERT_TRUE(jack.open(makeOutputConfig()));
     ASSERT_TRUE(jack.start());
@@ -969,7 +969,7 @@ TEST_F(JackBackendHwTest, TestStopActuallyHaltsCallbackInvocations) {
 TEST_F(JackBackendHwTest, TestStopDisconnectsEndpointPorts) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     const auto cfg = makeOutputConfig();
     ASSERT_TRUE(jack.open(cfg));
     ASSERT_TRUE(jack.start());
@@ -986,7 +986,7 @@ TEST_F(JackBackendHwTest, TestStopAllowsRestartAndCallbackResumes) {
     SKIP_UNLESS(output);
 
     resetCallbackState();
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     const auto cfg = makeOutputConfig();
     ASSERT_TRUE(jack.setProcessFunction(testCallback));
     ASSERT_TRUE(jack.open(cfg));
@@ -1010,7 +1010,7 @@ TEST_F(JackBackendHwTest, TestStopAllowsRestartAndCallbackResumes) {
 TEST_F(JackBackendHwTest, TestCloseSucceedsAfterOpen) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeOutputConfig()));
 
     auto ret = jack.close();
@@ -1020,13 +1020,13 @@ TEST_F(JackBackendHwTest, TestCloseSucceedsAfterOpen) {
 TEST_F(JackBackendHwTest, TestCloseFailsWhileRunning) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeOutputConfig()));
     ASSERT_TRUE(jack.start());
 
     auto ret = jack.close();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     ASSERT_TRUE(jack.stop());
     ASSERT_TRUE(jack.close());
@@ -1035,19 +1035,19 @@ TEST_F(JackBackendHwTest, TestCloseFailsWhileRunning) {
 TEST_F(JackBackendHwTest, TestCloseTwiceFailsInvalidState) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeOutputConfig()));
     ASSERT_TRUE(jack.close());
 
     auto ret = jack.close();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST_F(JackBackendHwTest, TestCloseReleasesResourcesForReopen) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeOutputConfig()));
     ASSERT_TRUE(jack.close());
 
@@ -1059,7 +1059,7 @@ TEST_F(JackBackendHwTest, TestCloseReleasesResourcesForReopen) {
 TEST_F(JackBackendHwTest, TestFullLifecycleOpenStartStopClose) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeOutputConfig()));
     ASSERT_TRUE(jack.start());
     ASSERT_TRUE(jack.stop());
@@ -1069,7 +1069,7 @@ TEST_F(JackBackendHwTest, TestFullLifecycleOpenStartStopClose) {
 TEST_F(JackBackendHwTest, TestLifecycleRepeatedCycles) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     for (int i = 0; i < 3; ++i) {
         SCOPED_TRACE(i);
         ASSERT_TRUE(jack.open(makeOutputConfig()));
@@ -1084,7 +1084,7 @@ TEST_F(JackBackendHwTest, TestLifecycleRepeatedCycles) {
 TEST_F(JackBackendHwTest, TestDuplexFullLifecycle) {
     SKIP_UNLESS(duplex);
 
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     ASSERT_TRUE(jack.open(makeDuplexConfig()));
     ASSERT_TRUE(jack.start());
     ASSERT_TRUE(jack.stop());
@@ -1095,7 +1095,7 @@ TEST_F(JackBackendHwTest, TestDuplexCallbackReceivesInputAndOutput) {
     SKIP_UNLESS(duplex);
 
     resetCallbackState();
-    mka::audio::JACK jack;
+    mka::audio::core::JACK jack;
     const auto cfg = makeDuplexConfig();
     ASSERT_TRUE(jack.setProcessFunction(inspectCallback));
     ASSERT_TRUE(jack.open(cfg));
@@ -1122,12 +1122,12 @@ TEST_F(JackBackendHwTest, TestDestructorWhileOpenReleasesResources) {
     SKIP_UNLESS(output);
 
     {
-        mka::audio::JACK jack;
+        mka::audio::core::JACK jack;
         ASSERT_TRUE(jack.open(makeOutputConfig()));
         // destruction sans close()
     }
 
-    mka::audio::JACK second;
+    mka::audio::core::JACK second;
     ASSERT_TRUE(second.open(makeOutputConfig()));
     EXPECT_TRUE(second.close());
 }
@@ -1136,13 +1136,13 @@ TEST_F(JackBackendHwTest, TestDestructorWhileRunningReleasesResources) {
     SKIP_UNLESS(output);
 
     {
-        mka::audio::JACK jack;
+        mka::audio::core::JACK jack;
         ASSERT_TRUE(jack.setProcessFunction(testCallback));
         ASSERT_TRUE(jack.open(makeOutputConfig()));
         ASSERT_TRUE(jack.start());
     }
 
-    mka::audio::JACK second;
+    mka::audio::core::JACK second;
     ASSERT_TRUE(second.open(makeOutputConfig()));
     EXPECT_TRUE(second.close());
 }
@@ -1150,8 +1150,8 @@ TEST_F(JackBackendHwTest, TestDestructorWhileRunningReleasesResources) {
 TEST_F(JackBackendHwTest, TestTwoInstancesCanCoexist) {
     SKIP_UNLESS(output);
 
-    mka::audio::JACK a;
-    mka::audio::JACK b;
+    mka::audio::core::JACK a;
+    mka::audio::core::JACK b;
     ASSERT_TRUE(a.setProcessFunction(testCallback));
     ASSERT_TRUE(b.setProcessFunction(testCallback));
     ASSERT_TRUE(a.open(makeOutputConfig()));
@@ -1174,7 +1174,7 @@ namespace {
     float g_sineGainStep = 0.0f;
     std::atomic<bool> g_sineFadeOut{false};
 
-    void sineCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void sineCallback(void*, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         for (std::uint32_t i = 0; i < ctx.frames; ++i) {
             constexpr float amplitude = 0.2f;
             // Rampe de gain (fade-in au démarrage, fade-out avant l'arrêt) :
@@ -1203,14 +1203,14 @@ TEST(JackBackendTest, DISABLED_TestPlaySineWave) {
     constexpr double frequency = 440.0;
     const double sampleRate = out.sampleRate;
 
-    mka::audio::JACK jack;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::JACK jack;
+    const mka::audio::core::EndpointConfig config {
         .id = out.id,
-        .direction = mka::audio::Direction::Output,
+        .direction = mka::audio::core::Direction::Output,
         .inputChannels = 0,
         .outputChannels = std::min<std::uint32_t>(2, out.outMax),
         .sampleRate = out.sampleRate,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = out.bufferSize,
     };
 
@@ -1241,7 +1241,7 @@ namespace {
     std::atomic<std::size_t> g_warmupFramesLeft{0};
     std::size_t g_recordCapacityFrames = 0;
 
-    void recordCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void recordCallback(void*, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         std::size_t start = 0;
         const std::size_t warm = g_warmupFramesLeft.load();
         if (warm > 0) {
@@ -1267,7 +1267,7 @@ namespace {
     std::size_t g_playbackLeadFrames = 0;
     std::size_t g_playbackTotalFrames = 0;
 
-    void playbackFromRecordCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void playbackFromRecordCallback(void*, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         const std::size_t pos = g_playbackPosition.load();
 
         for (std::uint32_t ch = 0; ch < ctx.output.count; ++ch) {
@@ -1310,7 +1310,7 @@ TEST(JackBackendTest, DISABLED_TestRecordAndPlayback) {
     const std::uint32_t inChannels = std::min<std::uint32_t>(2, in.inMax);
     const std::uint32_t outChannels = std::min<std::uint32_t>(2, out.outMax);
     constexpr int recordSeconds = 5;
-    const mka::audio::SampleRate sampleRate = in.sampleRate;
+    const mka::audio::core::SampleRate sampleRate = in.sampleRate;
 
     const auto msToFrames = [&](const int ms) {
         return static_cast<std::size_t>(sampleRate) * ms / 1000;
@@ -1326,14 +1326,14 @@ TEST(JackBackendTest, DISABLED_TestRecordAndPlayback) {
 
     // --- Phase 1 : enregistrement ---
     {
-        mka::audio::JACK recorder;
-        const mka::audio::EndpointConfig recordConfig {
+        mka::audio::core::JACK recorder;
+        const mka::audio::core::EndpointConfig recordConfig {
             .id = in.id,
-            .direction = mka::audio::Direction::Input,
+            .direction = mka::audio::core::Direction::Input,
             .inputChannels = inChannels,
             .outputChannels = 0,
             .sampleRate = sampleRate,
-            .format = mka::audio::Format::Float32,
+            .format = mka::audio::core::Format::Float32,
             .bufferSize = in.bufferSize,
         };
 
@@ -1359,14 +1359,14 @@ TEST(JackBackendTest, DISABLED_TestRecordAndPlayback) {
     g_playbackPosition.store(0);
 
     {
-        mka::audio::JACK player;
-        const mka::audio::EndpointConfig playbackConfig {
+        mka::audio::core::JACK player;
+        const mka::audio::core::EndpointConfig playbackConfig {
             .id = out.id,
-            .direction = mka::audio::Direction::Output,
+            .direction = mka::audio::core::Direction::Output,
             .inputChannels = 0,
             .outputChannels = outChannels,
             .sampleRate = sampleRate,
-            .format = mka::audio::Format::Float32,
+            .format = mka::audio::core::Format::Float32,
             .bufferSize = out.bufferSize,
         };
 
@@ -1386,7 +1386,7 @@ TEST(JackBackendTest, DISABLED_TestRecordAndPlayback) {
 //--- Test Duplex loopback (manuel, désactivé par défaut) --------------------
 
 namespace {
-    void loopbackCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void loopbackCallback(void*, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         if (ctx.input.count == 0) {
             silence(ctx);
             return;
@@ -1405,14 +1405,14 @@ TEST(JackBackendTest, DISABLED_TestDuplexLoopback) {
     ASSERT_TRUE(both.available) << "aucun endpoint duplex JACK";
     std::println("duplex device: {}", both.id);
 
-    mka::audio::JACK jack;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::JACK jack;
+    const mka::audio::core::EndpointConfig config {
         .id = both.id,
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = std::min<std::uint32_t>(2, both.inMax),
         .outputChannels = std::min<std::uint32_t>(2, both.outMax),
         .sampleRate = both.sampleRate,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = both.bufferSize,
     };
 

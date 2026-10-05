@@ -9,41 +9,40 @@
 import mka.audio.backend.alsa;
 import mka.audio.process;
 
-static const char* fmtToStr(mka::audio::Format format) {
+static const char *fmtToStr(mka::audio::core::Format format) {
     switch (format) {
-        case mka::audio::Format::Int16: return "int16";
-        case mka::audio::Format::Int24: return "int24";
-        case mka::audio::Format::Int32: return "int32";
-        case mka::audio::Format::Float32: return "float32";
-        case mka::audio::Format::Float64: return "float64";
+        case mka::audio::core::Format::Int16: return "int16";
+        case mka::audio::core::Format::Int24: return "int24";
+        case mka::audio::core::Format::Int32: return "int32";
+        case mka::audio::core::Format::Float32: return "float32";
+        case mka::audio::core::Format::Float64: return "float64";
     }
     std::unreachable();
 }
 
-static void printCaps(const mka::audio::StreamCapabilities& caps) {
+static void printCaps(const mka::audio::core::StreamCapabilities &caps) {
     std::println("  channels: {} - {}", caps.minChannels, caps.maxChannels);
 
     std::print("  sample rates: ");
-    for (const auto& sampleRate : caps.sampleRates) {
+    for (const auto &sampleRate: caps.sampleRates) {
         std::print("{}, ", sampleRate);
     }
     std::print("\n  formats: ");
-    for (const auto& format : caps.formats) {
+    for (const auto &format: caps.formats) {
         std::print("{}, ", fmtToStr(format));
     }
     std::print("\n  buffer sizes: ");
-    for (const auto& bufferSize : caps.bufferSizes) {
+    for (const auto &bufferSize: caps.bufferSizes) {
         std::print("{}, ", bufferSize);
     }
     std::println("");
 }
 
 TEST(ALSABackendTest, TestGetEndPoints) {
-    const mka::audio::ALSA alsa;
+    const mka::audio::core::ALSA alsa;
     const auto endpoints = alsa.getEndPoints();
 
-    for (const auto& endpoint : endpoints) {
-
+    for (const auto &endpoint: endpoints) {
         EXPECT_TRUE(endpoint.input.has_value() || endpoint.output.has_value())
             << "endpoint " << endpoint.id << " has neither input nor output";
 
@@ -53,15 +52,15 @@ TEST(ALSABackendTest, TestGetEndPoints) {
         if (endpoint.input) {
             EXPECT_LE(endpoint.input->minChannels, endpoint.input->maxChannels);
             EXPECT_FALSE(endpoint.input->sampleRates.empty()
-                         && endpoint.input->formats.empty()
-                         && endpoint.input->bufferSizes.empty())
+                && endpoint.input->formats.empty()
+                && endpoint.input->bufferSizes.empty())
                 << "endpoint " << endpoint.id << " has empty input capabilities";
         }
         if (endpoint.output) {
             EXPECT_LE(endpoint.output->minChannels, endpoint.output->maxChannels);
             EXPECT_FALSE(endpoint.output->sampleRates.empty()
-                         && endpoint.output->formats.empty()
-                         && endpoint.output->bufferSizes.empty())
+                && endpoint.output->formats.empty()
+                && endpoint.output->bufferSizes.empty())
                 << "endpoint " << endpoint.id << " has empty output capabilities";
         }
 
@@ -82,10 +81,10 @@ TEST(ALSABackendTest, TestGetEndPoints) {
 }
 
 TEST(ALSABackendTest, TestGetEndPointsContainsKnownDevice) {
-    const mka::audio::ALSA alsa;
+    const mka::audio::core::ALSA alsa;
     const auto endpoints = alsa.getEndPoints();
 
-    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::Endpoint& e) {
+    const auto it = std::ranges::find_if(endpoints, [](const mka::audio::core::Endpoint &e) {
         return e.id == "hw:1,0";
     });
 
@@ -97,117 +96,117 @@ TEST(ALSABackendTest, TestGetEndPointsContainsKnownDevice) {
 //--- Test Open
 
 TEST(ALSABackendTest, TestOpenInvalidID) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "InvalidID",
     };
 
     auto ret = alsa.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::EndpointUnavailable);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::EndpointUnavailable);
 
     ASSERT_FALSE(alsa.close());
 }
 
 TEST(ALSABackendTest, TestOpenInvalidFmt) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 1,
         .outputChannels = 1,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Float32,
+        .format = mka::audio::core::Format::Float32,
         .bufferSize = 512,
     };
 
     auto ret = alsa.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::FormatNotSupported);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::FormatNotSupported);
     ASSERT_FALSE(alsa.close());
 }
 
 TEST(ALSABackendTest, TestOpenInvalidChannelCount) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 89,
         .outputChannels = 0,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
     auto ret = alsa.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::ChannelsNotSupported);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::ChannelsNotSupported);
     ASSERT_FALSE(alsa.close());
 }
 
 TEST(ALSABackendTest, TestOpenInvalidSamplerate) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44190,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
     auto ret = alsa.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::SampleRateNotSupported);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::SampleRateNotSupported);
     ASSERT_FALSE(alsa.close());
 }
 
 TEST(ALSABackendTest, TestOpenInvalidBuffSize) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 500,
     };
 
     auto ret = alsa.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::BufferSizeNotSupported);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::BufferSizeNotSupported);
     ASSERT_FALSE(alsa.close());
 }
 
 TEST(ALSABackendTest, TestOpenPartialFailureCleansUpCapture) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 89,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
     auto ret = alsa.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::ChannelsNotSupported);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::ChannelsNotSupported);
     ASSERT_FALSE(alsa.close());
 }
 
 TEST(ALSABackendTest, TestOpenTwiceFailsWithInvalidState) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -215,19 +214,19 @@ TEST(ALSABackendTest, TestOpenTwiceFailsWithInvalidState) {
 
     auto ret = alsa.open(config);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
     ASSERT_TRUE(alsa.close());
 }
 
 TEST(ALSABackendTest, TestOpenSucceed) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -240,7 +239,7 @@ namespace {
     std::atomic<bool> g_callbackCalled{false};
     std::atomic<std::thread::id> g_callbackThreadId{};
 
-    void testCallback(void*, const mka::audio::AudioProcessContext&) noexcept {
+    void testCallback(void *, const mka::audio::core::AudioProcessContext &) noexcept {
         g_callbackThreadId.store(std::this_thread::get_id());
         g_callbackCalled.store(true);
     }
@@ -249,22 +248,22 @@ namespace {
 //--- Test Start
 
 TEST(ALSABackendTest, TestStartWithoutOpenFailsInvalidState) {
-    mka::audio::ALSA alsa;
+    mka::audio::core::ALSA alsa;
 
     auto ret = alsa.start();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST(ALSABackendTest, TestStartSucceedsAfterOpen) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -275,14 +274,14 @@ TEST(ALSABackendTest, TestStartSucceedsAfterOpen) {
 }
 
 TEST(ALSABackendTest, TestStartTwiceFailsInvalidState) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -291,18 +290,18 @@ TEST(ALSABackendTest, TestStartTwiceFailsInvalidState) {
 
     auto ret = alsa.start();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST(ALSABackendTest, TestStartInvokesCallbackOnDifferentThread) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -324,14 +323,14 @@ TEST(ALSABackendTest, TestStartInvokesCallbackOnDifferentThread) {
 }
 
 TEST(ALSABackendTest, TestSetProcessFunctionFailsWhileRunning) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -340,20 +339,20 @@ TEST(ALSABackendTest, TestSetProcessFunctionFailsWhileRunning) {
 
     auto ret = alsa.setProcessFunction(testCallback);
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 //--- Test Stop
 
 TEST(ALSABackendTest, TestStopWithoutStartFailsInvalidState) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -361,18 +360,18 @@ TEST(ALSABackendTest, TestStopWithoutStartFailsInvalidState) {
 
     auto ret = alsa.stop();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST(ALSABackendTest, TestStopSucceedsAfterStart) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -384,14 +383,14 @@ TEST(ALSABackendTest, TestStopSucceedsAfterStart) {
 }
 
 TEST(ALSABackendTest, TestStopTwiceFailsInvalidState) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -401,18 +400,18 @@ TEST(ALSABackendTest, TestStopTwiceFailsInvalidState) {
 
     auto ret = alsa.stop();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST(ALSABackendTest, TestStopActuallyHaltsCallbackInvocations) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -435,14 +434,14 @@ TEST(ALSABackendTest, TestStopActuallyHaltsCallbackInvocations) {
 }
 
 TEST(ALSABackendTest, TestStopAllowsReopenAndRestart) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -458,22 +457,22 @@ TEST(ALSABackendTest, TestStopAllowsReopenAndRestart) {
 //--- Test Close
 
 TEST(ALSABackendTest, TestCloseWithoutOpenFailsInvalidState) {
-    mka::audio::ALSA alsa;
+    mka::audio::core::ALSA alsa;
 
     auto ret = alsa.close();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST(ALSABackendTest, TestCloseSucceedsAfterOpen) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -484,14 +483,14 @@ TEST(ALSABackendTest, TestCloseSucceedsAfterOpen) {
 }
 
 TEST(ALSABackendTest, TestCloseFailsWhileRunning) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -502,21 +501,21 @@ TEST(ALSABackendTest, TestCloseFailsWhileRunning) {
     // refusé tant que le flux tourne encore (state == Running, pas Open).
     auto ret = alsa.close();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 
     ASSERT_TRUE(alsa.stop());
     ASSERT_TRUE(alsa.close());
 }
 
 TEST(ALSABackendTest, TestCloseTwiceFailsInvalidState) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -525,18 +524,18 @@ TEST(ALSABackendTest, TestCloseTwiceFailsInvalidState) {
 
     auto ret = alsa.close();
     ASSERT_FALSE(ret);
-    ASSERT_EQ(ret.error(), mka::audio::ErrorType::InvalidState);
+    ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
 TEST(ALSABackendTest, TestCloseReleasesDeviceForReopen) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -552,14 +551,14 @@ TEST(ALSABackendTest, TestCloseReleasesDeviceForReopen) {
 }
 
 TEST(ALSABackendTest, TestFullLifecycleOpenStartStopClose) {
-    mka::audio::ALSA alsa;
-    const mka::audio::EndpointConfig config {
+    mka::audio::core::ALSA alsa;
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Duplex,
+        .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
         .sampleRate = 44100,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -568,12 +567,13 @@ TEST(ALSABackendTest, TestFullLifecycleOpenStartStopClose) {
     ASSERT_TRUE(alsa.stop());
     ASSERT_TRUE(alsa.close());
 }
+
 //--- Test Sinewave
 namespace {
     double g_sinePhase = 0.0;
     double g_sinePhaseIncrement = 0.0;
 
-    void sineCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void sineCallback(void *, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         for (std::uint32_t i = 0; i < ctx.frames; ++i) {
             constexpr float amplitude = 0.2f;
             const auto sample = static_cast<float>(std::sin(g_sinePhase) * amplitude);
@@ -592,18 +592,18 @@ namespace {
 
 // To togle remove DISABLED_
 TEST(ALSABackendTest, DISABLED_TestPlaySineWave) {
-    mka::audio::ALSA alsa;
+    mka::audio::core::ALSA alsa;
 
-    constexpr mka::audio::SampleRate sampleRate = 44100;
+    constexpr mka::audio::core::SampleRate sampleRate = 44100;
     constexpr double frequency = 440.0;
 
-    const mka::audio::EndpointConfig config {
+    const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
-        .direction = mka::audio::Direction::Output,
+        .direction = mka::audio::core::Direction::Output,
         .inputChannels = 0,
         .outputChannels = 2,
         .sampleRate = sampleRate,
-        .format = mka::audio::Format::Int32,
+        .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
 
@@ -621,11 +621,11 @@ TEST(ALSABackendTest, DISABLED_TestPlaySineWave) {
 }
 
 namespace {
-    std::vector<std::vector<float>> g_recordedSamples;
+    std::vector<std::vector<float> > g_recordedSamples;
     std::atomic<std::size_t> g_recordedFrames{0};
     std::size_t g_recordCapacityFrames = 0;
 
-    void recordCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void recordCallback(void *, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         const std::size_t framesLeft = g_recordCapacityFrames - g_recordedFrames.load();
         const std::size_t framesToCopy = std::min<std::size_t>(framesLeft, ctx.frames);
 
@@ -641,7 +641,7 @@ namespace {
 
     std::atomic<std::size_t> g_playbackFrames{0};
 
-    void playbackCallback(void*, const mka::audio::AudioProcessContext &ctx) noexcept {
+    void playbackCallback(void *, const mka::audio::core::AudioProcessContext &ctx) noexcept {
         const std::size_t framesLeft = g_recordCapacityFrames - g_playbackFrames.load();
         const std::size_t framesToCopy = std::min<std::size_t>(framesLeft, ctx.frames);
 
@@ -666,7 +666,7 @@ namespace {
  * play recording
  */
 TEST(ALSABackendTest, DISABLED_TestRecordAndPlayback) {
-    constexpr mka::audio::SampleRate sampleRate = 48000;
+    constexpr mka::audio::core::SampleRate sampleRate = 48000;
     constexpr std::uint32_t channels = 2;
     constexpr int recordSeconds = 5;
 
@@ -677,14 +677,14 @@ TEST(ALSABackendTest, DISABLED_TestRecordAndPlayback) {
 
     // --- Phase 1 : recording ---
     {
-        mka::audio::ALSA recorder;
-        const mka::audio::EndpointConfig recordConfig {
+        mka::audio::core::ALSA recorder;
+        const mka::audio::core::EndpointConfig recordConfig{
             .id = "hw:2,0",
-            .direction = mka::audio::Direction::Input,
+            .direction = mka::audio::core::Direction::Input,
             .inputChannels = channels,
             .outputChannels = 0,
             .sampleRate = sampleRate,
-            .format = mka::audio::Format::Int32,
+            .format = mka::audio::core::Format::Int32,
             .bufferSize = 512,
         };
 
@@ -705,14 +705,14 @@ TEST(ALSABackendTest, DISABLED_TestRecordAndPlayback) {
 
     // --- Phase 2 : playback ---
     {
-        mka::audio::ALSA player;
-        const mka::audio::EndpointConfig playbackConfig {
+        mka::audio::core::ALSA player;
+        const mka::audio::core::EndpointConfig playbackConfig{
             .id = "hw:1,0",
-            .direction = mka::audio::Direction::Output,
+            .direction = mka::audio::core::Direction::Output,
             .inputChannels = 0,
             .outputChannels = channels,
             .sampleRate = sampleRate,
-            .format = mka::audio::Format::Int32,
+            .format = mka::audio::core::Format::Int32,
             .bufferSize = 512,
         };
 

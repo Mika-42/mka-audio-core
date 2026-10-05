@@ -9,7 +9,7 @@ module;
 export module mka.audio.endpoint;
 import mka.audio.constants;
 
-export namespace mka::audio {
+export namespace mka::audio::core {
     enum class Direction { Input, Output, Duplex };
 
     struct StreamCapabilities {

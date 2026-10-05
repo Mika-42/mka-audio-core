@@ -5,7 +5,7 @@ module;
 #include <expected>
 export module mka.audio.error;
 
-export namespace mka::audio {
+export namespace mka::audio::core {
     enum class ErrorType {
         InvalidState,
         EndpointUnavailable,
