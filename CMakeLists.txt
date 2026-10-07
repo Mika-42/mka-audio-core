@@ -16,22 +16,22 @@ option(MKA_BUILD_TESTS
 
 option(MKA_BUILD_ALSA
         "Build the ALSA backend"
-        ON
+        ${LINUX}
 )
 
 option(MKA_BUILD_PIPEWIRE
         "Build the PipeWire backend"
-        ON
+        ${LINUX}
 )
 
 option(MKA_BUILD_JACK
         "Build the JACK backend"
-        ON
+        ${LINUX}
 )
 
 option(MKA_BUILD_PULSEAUDIO
         "Build the PulseAudio backend"
-        ON
+        ${LINUX}
 )
 
 
