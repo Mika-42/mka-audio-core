@@ -78,3 +78,21 @@ TEST_F(WasapiPublicStress, ThousandCompleteCyclesFreeThePreviousCallbackContextA
     }
     EXPECT_EQ(d->client->starts,1000u);EXPECT_EQ(d->client->stops,1000u);d.Reset();
 }
+
+TEST_F(PublicFixture, FailedNativeStopAndResetKeepRunningGuardsUntilCleanupActuallySucceeds) {
+    auto d=add(L"output",eRender);
+    for(int stage=0;stage<2;++stage) {
+        Wasapi backend;ASSERT_TRUE(backend.open(config()));ASSERT_TRUE(backend.start());
+        const auto beforeStops=d->client->stops,beforeResets=d->client->resets;
+        if(stage==0)d->client->stopResult=E_FAIL;else d->client->resetResult=E_FAIL;
+        for(int attempt=0;attempt<2;++attempt) {
+            const auto stopped=backend.stop();ASSERT_FALSE(stopped);EXPECT_EQ(stopped.error(),ErrorType::ConfigurationFailed);
+            EXPECT_EQ(backend.setProcessFunction(nullptr).error(),ErrorType::InvalidState);
+            EXPECT_EQ(backend.close().error(),ErrorType::InvalidState);
+        }
+        if(stage==0)EXPECT_EQ(d->client->stops,beforeStops+2);else EXPECT_EQ(d->client->resets,beforeResets+2);
+        d->client->stopResult=S_OK;d->client->resetResult=S_OK;
+        ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.setProcessFunction(nullptr));ASSERT_TRUE(backend.close());
+    }
+    d.Reset();
+}

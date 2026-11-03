@@ -327,12 +327,14 @@ private:
             result=client_->Stop();
             if(result==AUDCLNT_E_DEVICE_INVALIDATED || result==AUDCLNT_E_RESOURCES_INVALIDATED
                 || result==AUDCLNT_E_SERVICE_NOT_RUNNING)result=S_OK;
-            if(SUCCEEDED(result) || force) {
-                started_=false;
-                const auto reset=client_->Reset();
-                if(SUCCEEDED(result) && FAILED(reset) && reset!=AUDCLNT_E_DEVICE_INVALIDATED
-                    && reset!=AUDCLNT_E_RESOURCES_INVALIDATED && reset!=AUDCLNT_E_SERVICE_NOT_RUNNING)result=reset;
-            }
+            if(SUCCEEDED(result) || force) {started_=false;resetPending_=true;}
+        }
+        if(client_ && resetPending_ && (SUCCEEDED(result) || force)) {
+            auto reset=client_->Reset();
+            if(reset==AUDCLNT_E_DEVICE_INVALIDATED || reset==AUDCLNT_E_RESOURCES_INVALIDATED
+                || reset==AUDCLNT_E_SERVICE_NOT_RUNNING)reset=S_OK;
+            if(SUCCEEDED(reset) || force)resetPending_=false;
+            if(SUCCEEDED(result) && FAILED(reset))result=reset;
         }
         if(FAILED(result) && !force)fail(result);
         callbacks_={};
@@ -353,7 +355,7 @@ private:
     std::vector<const float*> inputs_;
     UniqueEvent stopEvent_,runEvent_;
     Callbacks callbacks_;
-    bool started_=false;
+    bool started_=false,resetPending_=false;
     std::atomic<bool> enabled_{false},failed_{false};
     std::atomic<HRESULT> lastFailure_{S_OK};
     std::jthread worker_;
