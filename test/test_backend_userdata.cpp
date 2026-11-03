@@ -130,3 +130,35 @@ TEST(BackendUserDataTest, RejectedSetWhileRunningKeepsPreviousUserData) {
     ASSERT_TRUE(backend.stop());
     ASSERT_TRUE(backend.close());
 }
+
+TEST(BackendUserDataTest, ReplacesFunctionAndUserTogetherAfterStopAndAcrossReopen) {
+    UserDataBackend backend;
+    Counter a, b;
+    const auto addTen = +[](void* user, const mka::audio::core::AudioProcessContext&) noexcept {
+        static_cast<Counter*>(user)->hits += 10;
+    };
+    ASSERT_TRUE(backend.setProcessFunction(countingCallback, &a));
+    ASSERT_TRUE(backend.open(testEndpointConfig()));
+    ASSERT_TRUE(backend.start());
+    backend.invokeCallback({});
+    EXPECT_FALSE(backend.setProcessFunction(addTen, &b));
+    backend.invokeCallback({});
+    ASSERT_TRUE(backend.stop());
+    ASSERT_TRUE(backend.setProcessFunction(addTen, &b));
+    ASSERT_TRUE(backend.start());
+    backend.invokeCallback({});
+    ASSERT_TRUE(backend.stop());
+    ASSERT_TRUE(backend.close());
+    ASSERT_TRUE(backend.open(testEndpointConfig()));
+    ASSERT_TRUE(backend.start());
+    backend.invokeCallback({});
+    ASSERT_TRUE(backend.stop());
+    ASSERT_TRUE(backend.setProcessFunction(nullptr));
+    ASSERT_TRUE(backend.start());
+    backend.invokeCallback({});
+    ASSERT_TRUE(backend.stop());
+    ASSERT_TRUE(backend.close());
+    EXPECT_EQ(a.hits, 2);
+    EXPECT_EQ(b.hits, 20);
+    EXPECT_EQ(backend.storedUserData(), nullptr);
+}
