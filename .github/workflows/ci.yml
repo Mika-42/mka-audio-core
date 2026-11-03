@@ -1,0 +1,34 @@
+name: C++26 checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CXX: clang++-19
+  CXXFLAGS: --gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/14
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-build
+      - name: Configure core without audio SDKs
+        run: cmake --preset core
+      - name: Build C++26
+        run: cmake --build --preset core --parallel 2
+      - name: Execute unit tests
+        run: ctest --preset core --output-junit "${{ github.workspace }}/junit-core.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: core-test-results
+          path: |
+            junit-core.xml
+            build/core/Testing/Temporary/LastTest.log

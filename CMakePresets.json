@@ -1,0 +1,49 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 0,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "core",
+      "displayName": "C++26 core without native SDKs",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "MKA_BUILD_TESTS": "ON",
+        "MKA_BUILD_ALSA": "OFF",
+        "MKA_BUILD_JACK": "OFF",
+        "MKA_BUILD_PIPEWIRE": "OFF",
+        "MKA_BUILD_PULSEAUDIO": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "core",
+      "configurePreset": "core"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "core",
+      "configurePreset": "core",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "unit"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "jobs": 2
+      }
+    }
+  ]
+}
