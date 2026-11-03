@@ -411,7 +411,8 @@ if (MKA_BUILD_TESTS AND MKA_BUILD_PULSEAUDIO)
     target_link_libraries(mka-audio-pulse-configuration-tests PRIVATE
             mka-audio-pulseaudio GTest::gtest_main PkgConfig::PULSEAUDIO)
     target_link_options(mka-audio-pulse-configuration-tests PRIVATE "-Wl,--wrap=pa_stream_get_sample_spec")
-    foreach(symbol pa_stream_get_buffer_attr pa_stream_connect_playback pa_stream_connect_record)
+    foreach(symbol pa_stream_get_buffer_attr pa_stream_connect_playback pa_stream_connect_record
+            pa_context_get_state pa_stream_get_state pa_operation_get_state pa_operation_cancel pa_stream_cork pa_context_get_sink_info_list)
         target_link_options(mka-audio-pulse-configuration-tests PRIVATE "-Wl,--wrap=${symbol}")
     endforeach()
     gtest_discover_tests(mka-audio-pulse-configuration-tests TEST_PREFIX "pulseaudio.config.")
