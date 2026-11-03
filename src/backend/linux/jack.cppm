@@ -81,6 +81,8 @@ namespace mka::audio::core {
             }
 
             jack_client_t *client_ = nullptr;
+            SampleRate requestedRate_ = 0;
+            BufferSize requestedBuffer_ = 0;
 
             // Nos ports.
             std::vector<jack_port_t *> inPorts_;
@@ -208,6 +210,8 @@ namespace mka::audio::core {
                 return fail(ErrorType::ConfigurationFailed);
 
             jack_on_shutdown(client_, &JACK::onShutdown, this);
+            requestedRate_ = endpointCfg.sampleRate;
+            requestedBuffer_ = endpointCfg.bufferSize;
 
             return {};
         } catch (...) {
@@ -217,6 +221,11 @@ namespace mka::audio::core {
     }
 
     Result JACK::start_() {
+        // The server may have changed while this client was Open but inactive.
+        if (jack_get_sample_rate(client_) != requestedRate_)
+            return std::unexpected{ErrorType::SampleRateNotSupported};
+        if (jack_get_buffer_size(client_) != requestedBuffer_)
+            return std::unexpected{ErrorType::BufferSizeNotSupported};
         // jack_activate crée/démarre le thread audio du client.
         if (jack_activate(client_) != 0)
             return std::unexpected{ ErrorType::ConfigurationFailed };

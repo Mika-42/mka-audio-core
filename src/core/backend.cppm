@@ -83,6 +83,10 @@ export namespace mka::audio::core {
             // Aucune de ces méthodes ne peut être appelée depuis le handler d'événements
             // (elles renvoient InvalidState), sinon stop() s'attendrait lui-même.
 
+            // Hors RT : réserve et valide le flux natif sans appeler ProcessFunction.
+            // Un rejet conserve Closed ; le hook doit libérer ses ressources partielles.
+            // Les paramètres sont transmis intacts ; la configuration reste figée
+            // jusqu’à close(). Une modification nécessite stop/close/open/start.
             [[nodiscard]] Result open(EndpointConfig const &endpointCfg) {
                 if (calledFromDispatcher()) return std::unexpected{ ErrorType::InvalidState };
                 std::scoped_lock lock(controlMutex_);
@@ -94,6 +98,13 @@ export namespace mka::audio::core {
                 // Valide la forme de la demande avant toute ressource native.
                 // Les limites propres au périphérique restent vérifiées par open_().
                 if (auto result = validateDirection(endpointCfg); !result) return result;
+                switch (endpointCfg.format) {
+                    case Format::Int16: case Format::Int24: case Format::Int32:
+                    case Format::Float32: case Format::Float64: break;
+                    default: return std::unexpected{ErrorType::FormatNotSupported};
+                }
+                if (endpointCfg.sampleRate == 0) return std::unexpected{ErrorType::SampleRateNotSupported};
+                if (endpointCfg.bufferSize == 0) return std::unexpected{ErrorType::BufferSizeNotSupported};
 
                 return guarded([&] { return open_(endpointCfg); }).and_then([&]() -> Result {
                     state = State::Open;

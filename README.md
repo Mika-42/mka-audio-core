@@ -1125,3 +1125,20 @@ is `{nullptr, 0}`. Input is read-only and does not alias writable output. Output
 starts as silence on every callback; write only `[0, frames)`. Without a callback,
 output stays silent. Keep `user` alive until `stop()` returns, which quiesces the
 callback. Control methods cannot be called from the audio callback.
+
+## Strict stream configuration
+
+`open(config)` validates and reserves the native application stream before
+returning success, without invoking `ProcessFunction`. Its sample rate, format,
+direction and channel counts must match the request; no nearest-value fallback is
+allowed. A failure leaves the backend Closed and releases partial native resources.
+The configuration is immutable until `close()`; change it with
+`stop()` / `close()` / `open(newConfig)` / `start()`.
+
+Strictness concerns the application stream boundary. A sound server may convert
+between that stream and its hardware. `bufferSize` retains the backend-specific
+meaning above: period for ALSA, initial server quantum for JACK, transport latency
+request for PipeWire/PulseAudio. A latency request is not an exact hardware ring
+size, graph quantum, callback length or end-to-end latency guarantee. Native
+callback `frames` remains authoritative. JACK also rechecks the server rate and
+quantum before start, because the server can change while the client is Open.

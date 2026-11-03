@@ -728,3 +728,16 @@ TEST(ALSABackendTest, DISABLED_TestRecordAndPlayback) {
         ASSERT_TRUE(player.close());
     }
 }
+
+TEST(ALSABackendTest, OpenValidatesTheNullPcmConfigurationAndClosesWithoutHardware) {
+    mka::audio::core::ALSA backend;
+    const mka::audio::core::EndpointConfig config{
+        .id = "null", .direction = mka::audio::core::Direction::Output,
+        .inputChannels = 0, .outputChannels = 2, .sampleRate = 48000,
+        .format = mka::audio::core::Format::Float32, .bufferSize = 256
+    };
+    ASSERT_TRUE(backend.open(config));
+    ASSERT_TRUE(backend.close());
+    ASSERT_TRUE(backend.open(config));
+    ASSERT_TRUE(backend.close());
+}

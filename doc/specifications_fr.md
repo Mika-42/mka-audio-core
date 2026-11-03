@@ -442,3 +442,19 @@ seule et ne recouvre pas la sortie. La sortie commence au silence à chaque appe
 écrire uniquement dans `[0, frames)`. Sans callback, la sortie reste silencieuse.
 `user` doit rester vivant jusqu’au retour de `stop()`, qui attend la fin du
 callback. Les méthodes de contrôle sont interdites depuis le callback audio.
+
+## Configuration strictement appliquée
+
+`open(config)` valide et réserve le flux applicatif natif avant de réussir, sans
+appeler `ProcessFunction`. Fréquence, format, direction et comptes de canaux doivent
+correspondre à la demande, sans approximation. Un échec conserve Closed et libère
+les ressources partielles. La configuration est immuable jusqu’à `close()` ; la
+modifier exige `stop()` / `close()` / `open(newConfig)` / `start()`.
+
+Cette exactitude concerne la frontière du flux applicatif : un serveur audio peut
+convertir entre ce flux et son matériel. `bufferSize` conserve son sens par backend :
+période ALSA, quantum initial JACK, demande de latence PipeWire/PulseAudio. Une
+demande de latence ne garantit ni un ring matériel exact, ni le quantum du graphe,
+ni la taille du callback, ni la latence de bout en bout. `frames` fait foi à chaque
+callback. JACK revérifie fréquence et quantum avant start, le serveur pouvant
+changer pendant que le client est Open.

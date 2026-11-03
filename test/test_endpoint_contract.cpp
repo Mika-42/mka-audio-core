@@ -116,3 +116,25 @@ static_assert(std::is_same_v<decltype(mka::audio::core::OutputBuffer::channels),
 static_assert(std::is_nothrow_invocable_v<mka::audio::core::ProcessFunction, void*, const mka::audio::core::AudioProcessContext&>);
 static_assert(!std::is_assignable_v<decltype(std::declval<mka::audio::core::InputBuffer>().channels[0][0]), float>);
 static_assert(!std::is_assignable_v<decltype(std::declval<mka::audio::core::OutputBuffer>().channels[0]), float*>);
+
+namespace {
+TEST(EndpointConfigurationTest, RejectsInvalidScalarsBeforeCallingTheNativeHook) {
+    EndpointBackend backend;
+    const EndpointConfig valid{"test", Direction::Output, 0, 2, 48000, Format::Float32, 256};
+    for (const auto error : {ErrorType::FormatNotSupported, ErrorType::SampleRateNotSupported,
+                             ErrorType::BufferSizeNotSupported}) {
+        auto config = valid;
+        if (error == ErrorType::FormatNotSupported) config.format = static_cast<Format>(UINT32_MAX);
+        if (error == ErrorType::SampleRateNotSupported) config.sampleRate = 0;
+        if (error == ErrorType::BufferSizeNotSupported) config.bufferSize = 0;
+        const auto result = backend.open(config);
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error(), error);
+        EXPECT_EQ(backend.openCalls, 0u);
+    }
+    ASSERT_TRUE(backend.open(valid));
+    EXPECT_EQ(backend.opened.sampleRate, valid.sampleRate);
+    EXPECT_EQ(backend.opened.format, valid.format);
+    EXPECT_TRUE(backend.close());
+}
+}

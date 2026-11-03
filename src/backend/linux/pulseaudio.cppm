@@ -4,6 +4,8 @@ module;
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <chrono>
+#include <thread>
 #include <expected>
 #include <string>
 #include <vector>
@@ -48,6 +50,8 @@ namespace mka::audio::core {
             static void onStreamRead(pa_stream *s, std::size_t nbytesAvail, void *userdata);
             static void onStreamXRun(pa_stream *s, void *userdata);
             void disconnectLocked() noexcept;
+            [[nodiscard]] Result connectStream();
+            [[nodiscard]] Result setCorked(bool corked);
 
             void teardown() noexcept;
 
@@ -119,7 +123,7 @@ namespace mka::audio::core {
             }
             for (auto &ch : self->scratch_) std::fill_n(ch.data(), frames, 0.0f);
 
-            if (self->callback) {
+            if (self->active_.load(std::memory_order_acquire) && self->callback) {
                 const AudioProcessContext ctx{
                     .input = { nullptr, 0 },
                     .output = { self->outPtrs_.data(), self->channels_ },
@@ -176,7 +180,7 @@ namespace mka::audio::core {
                     }
                 }
 
-                if (self->callback) {
+                if (self->active_.load(std::memory_order_acquire) && self->callback) {
                     const AudioProcessContext ctx{
                         .input = { self->inPtrs_.data(), self->channels_ },
                         .output = { nullptr, 0 },
@@ -251,7 +255,9 @@ namespace mka::audio::core {
         loop_ = pa_threaded_mainloop_new();
         if (!loop_) return std::unexpected{ ErrorType::ConfigurationFailed };
 
-        return {};
+        const auto result = connectStream();
+        if (!result) teardown();
+        return result;
     }
 
     void PulseAudio::disconnectLocked() noexcept {
@@ -271,7 +277,23 @@ namespace mka::audio::core {
         }
     }
 
-    Result PulseAudio::start_() {
+    namespace {
+        // Called with the mainloop lock held. Polling is confined to control code;
+        // callbacks continue on the native loop while the lock is released.
+        template<class Predicate>
+        bool waitPulse(pa_threaded_mainloop* loop, Predicate ready) {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (!ready()) {
+                if (std::chrono::steady_clock::now() >= deadline) return false;
+                pa_threaded_mainloop_unlock(loop);
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                pa_threaded_mainloop_lock(loop);
+            }
+            return true;
+        }
+    }
+
+    Result PulseAudio::connectStream() {
         if (!loop_) return std::unexpected{ ErrorType::ConfigurationFailed };
 
         pa_threaded_mainloop_lock(loop_);
@@ -297,14 +319,12 @@ namespace mka::audio::core {
         pa_context_set_state_callback(context_, &PulseAudio::onContextState, this);
 
         if (pa_context_connect(context_, nullptr, PA_CONTEXT_NOFLAGS, nullptr) < 0)
-            return fail(ErrorType::ConfigurationFailed);
+            return fail(ErrorType::EndpointUnavailable);
 
-        for (;;) {
-            const auto state = pa_context_get_state(context_);
-            if (state == PA_CONTEXT_READY) break;
-            if (!PA_CONTEXT_IS_GOOD(state)) return fail(ErrorType::ConfigurationFailed);
-            pa_threaded_mainloop_wait(loop_);
-        }
+        if (!waitPulse(loop_, [&] { return pa_context_get_state(context_) == PA_CONTEXT_READY
+                                        || !PA_CONTEXT_IS_GOOD(pa_context_get_state(context_)); })
+            || pa_context_get_state(context_) != PA_CONTEXT_READY)
+            return fail(ErrorType::EndpointUnavailable);
 
         stream_ = pa_stream_new(context_, "mka-audio-stream", &spec_, nullptr);
         if (!stream_) return fail(ErrorType::ConfigurationFailed);
@@ -325,41 +345,75 @@ namespace mka::audio::core {
         if (direction_ == Direction::Input) {
             attr.fragsize = bufferSize_ * bytesPerFrame;
             pa_stream_set_read_callback(stream_, &PulseAudio::onStreamRead, this);
-            if (pa_stream_connect_record(stream_, target, &attr, PA_STREAM_ADJUST_LATENCY) < 0)
+            if (pa_stream_connect_record(stream_, target, &attr, static_cast<pa_stream_flags_t>(PA_STREAM_ADJUST_LATENCY | PA_STREAM_START_CORKED)) < 0)
                 return fail(ErrorType::EndpointUnavailable);
         } else {
             attr.tlength = bufferSize_ * bytesPerFrame;
             pa_stream_set_write_callback(stream_, &PulseAudio::onStreamWrite, this);
-            if (pa_stream_connect_playback(stream_, target, &attr, PA_STREAM_ADJUST_LATENCY, nullptr, nullptr) < 0)
+            if (pa_stream_connect_playback(stream_, target, &attr, static_cast<pa_stream_flags_t>(PA_STREAM_ADJUST_LATENCY | PA_STREAM_START_CORKED), nullptr, nullptr) < 0)
                 return fail(ErrorType::EndpointUnavailable);
         }
 
-        for (;;) {
-            const auto state = pa_stream_get_state(stream_);
-            if (state == PA_STREAM_READY) break;
-            if (!PA_STREAM_IS_GOOD(state)) return fail(ErrorType::EndpointUnavailable);
-            pa_threaded_mainloop_wait(loop_);
-        }
-
-        // Un échec survenu entre READY et active_=true serait perdu (notifyFailed
-        // est conditionné par active_) : on revérifie l'état avant de publier.
-        if (!PA_STREAM_IS_GOOD(pa_stream_get_state(stream_))
-            || !PA_CONTEXT_IS_GOOD(pa_context_get_state(context_)))
+        if (!waitPulse(loop_, [&] { return pa_stream_get_state(stream_) == PA_STREAM_READY
+                                        || !PA_STREAM_IS_GOOD(pa_stream_get_state(stream_)); })
+            || pa_stream_get_state(stream_) != PA_STREAM_READY)
             return fail(ErrorType::EndpointUnavailable);
 
-        active_.store(true, std::memory_order_release);
+        const auto* actual = pa_stream_get_sample_spec(stream_);
+        if (!actual) return fail(ErrorType::ConfigurationFailed);
+        if (actual->format != spec_.format) return fail(ErrorType::FormatNotSupported);
+        if (actual->rate != spec_.rate) return fail(ErrorType::SampleRateNotSupported);
+        if (actual->channels != spec_.channels) return fail(ErrorType::ChannelsNotSupported);
+        if (!PA_CONTEXT_IS_GOOD(pa_context_get_state(context_)))
+            return fail(ErrorType::EndpointUnavailable);
+
+        // Keep the verified native stream corked: open() never invokes user code.
         pa_threaded_mainloop_unlock(loop_);
         return {};
     }
 
-    Result PulseAudio::stop_() {
-        if (!loop_ || !threadStarted_) return std::unexpected{ ErrorType::ConfigurationFailed };
-
+    Result PulseAudio::setCorked(const bool corked) {
+        if (!loop_ || !threadStarted_) return std::unexpected{ErrorType::InvalidState};
         pa_threaded_mainloop_lock(loop_);
-        disconnectLocked();
+        if (!stream_ || pa_stream_get_state(stream_) != PA_STREAM_READY
+            || !context_ || pa_context_get_state(context_) != PA_CONTEXT_READY) {
+            active_.store(false, std::memory_order_release);
+            pa_threaded_mainloop_unlock(loop_);
+            return std::unexpected{ErrorType::EndpointUnavailable};
+        }
+        struct Completion { bool done = false; bool success = false; } completion;
+        active_.store(!corked, std::memory_order_release);
+        pa_operation* op = pa_stream_cork(stream_, corked, [](pa_stream*, int success, void* user) {
+            auto& state = *static_cast<Completion*>(user);
+            state.success = success != 0;
+            state.done = true;
+        }, &completion);
+        const bool success = op && waitPulse(loop_, [&] {
+            return completion.done || !PA_STREAM_IS_GOOD(pa_stream_get_state(stream_));
+        }) && completion.done && completion.success;
+        if (op) {
+            if (!completion.done) pa_operation_cancel(op);
+            pa_operation_unref(op);
+        }
+        if (!success) active_.store(false, std::memory_order_release);
         pa_threaded_mainloop_unlock(loop_);
+        return success ? Result{} : std::unexpected{ErrorType::ConfigurationFailed};
+    }
 
-        return {};
+    Result PulseAudio::start_() {
+        return setCorked(false);
+    }
+
+    Result PulseAudio::stop_() {
+        if (status().failed) {
+            pa_threaded_mainloop_lock(loop_);
+            disconnectLocked();
+            pa_threaded_mainloop_unlock(loop_);
+            return {};
+        }
+        // Taking the native lock quiesces any in-flight callback; active_=false
+        // prevents callbacks during the server's asynchronous cork acknowledgement.
+        return setCorked(true);
     }
 
     Result PulseAudio::close_() {

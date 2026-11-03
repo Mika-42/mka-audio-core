@@ -319,7 +319,7 @@ TEST(PulseAudioBackendTest, TestOpenInputZeroChannelsRejected) {
         .id = "",
         .direction = mka::audio::core::Direction::Input,
         .inputChannels = 0,
-        .outputChannels = 2, // ignoré pour une direction Input
+        .outputChannels = 2, // incohérent pour une direction Input
         .sampleRate = kSampleRate,
         .format = mka::audio::core::Format::Float32,
         .bufferSize = kBufferSize,
@@ -342,8 +342,8 @@ TEST(PulseAudioBackendTest, TestOpenValidationErrorPrecedence) {
     mka::audio::core::EndpointConfig cfg{
         .id = "",
         .direction = mka::audio::core::Direction::Duplex,
-        .inputChannels = 0,
-        .outputChannels = 0,
+        .inputChannels = 2,
+        .outputChannels = 2,
         .sampleRate = 44190,
         .format = mka::audio::core::Format::Int16,
         .bufferSize = 500,
@@ -351,12 +351,14 @@ TEST(PulseAudioBackendTest, TestOpenValidationErrorPrecedence) {
 
     expectOpenError(pa, cfg, mka::audio::core::ErrorType::ConfigurationFailed);
     cfg.direction = mka::audio::core::Direction::Output;
+    cfg.inputChannels = 0;
     expectOpenError(pa, cfg, mka::audio::core::ErrorType::SampleRateNotSupported);
     cfg.sampleRate = kSampleRate;
     expectOpenError(pa, cfg, mka::audio::core::ErrorType::BufferSizeNotSupported);
     cfg.bufferSize = kBufferSize;
     expectOpenError(pa, cfg, mka::audio::core::ErrorType::FormatNotSupported);
     cfg.format = mka::audio::core::Format::Float32;
+    cfg.outputChannels = 0;
     expectOpenError(pa, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 

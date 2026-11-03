@@ -355,7 +355,7 @@ TEST(JackBackendTest, TestOpenValidationErrorPrecedence) {
         .id = "",
         .direction = mka::audio::core::Direction::Output,
         .inputChannels = 0,
-        .outputChannels = 0,
+        .outputChannels = 2,
         .sampleRate = 44190,
         .format = mka::audio::core::Format::Int16,
         .bufferSize = 500,
@@ -367,6 +367,7 @@ TEST(JackBackendTest, TestOpenValidationErrorPrecedence) {
     cfg.bufferSize = 512;
     expectOpenError(jack, cfg, mka::audio::core::ErrorType::FormatNotSupported);
     cfg.format = mka::audio::core::Format::Float32;
+    cfg.outputChannels = 0;
     expectOpenError(jack, cfg, mka::audio::core::ErrorType::ChannelsNotSupported);
 }
 
@@ -718,14 +719,18 @@ TEST_F(JackBackendHwTest, TestOpenWithEmptyIdSucceeds) {
     EXPECT_TRUE(jack.close());
 }
 
-TEST_F(JackBackendHwTest, TestOpenOutputIgnoresInputChannelCount) {
+TEST_F(JackBackendHwTest, TestOpenOutputRejectsInputChannelCount) {
     SKIP_UNLESS(output);
 
     resetCallbackState();
     mka::audio::core::JACK jack;
     auto cfg = makeOutputConfig();
-    cfg.inputChannels = 99; // ignoré pour une direction Output
+    cfg.inputChannels = 99; // une demande incohérente ne doit pas être ignorée
     ASSERT_TRUE(jack.setProcessFunction(inspectCallback));
+    const auto invalid = jack.open(cfg);
+    ASSERT_FALSE(invalid);
+    EXPECT_EQ(invalid.error(), mka::audio::core::ErrorType::ChannelsNotSupported);
+    cfg.inputChannels = 0;
     ASSERT_TRUE(jack.open(cfg));
     ASSERT_TRUE(jack.start());
 
@@ -737,14 +742,18 @@ TEST_F(JackBackendHwTest, TestOpenOutputIgnoresInputChannelCount) {
     EXPECT_TRUE(jack.close());
 }
 
-TEST_F(JackBackendHwTest, TestOpenInputIgnoresOutputChannelCount) {
+TEST_F(JackBackendHwTest, TestOpenInputRejectsOutputChannelCount) {
     SKIP_UNLESS(input);
 
     resetCallbackState();
     mka::audio::core::JACK jack;
     auto cfg = makeInputConfig();
-    cfg.outputChannels = 99; // ignoré pour une direction Input
+    cfg.outputChannels = 99; // une demande incohérente ne doit pas être ignorée
     ASSERT_TRUE(jack.setProcessFunction(inspectCallback));
+    const auto invalid = jack.open(cfg);
+    ASSERT_FALSE(invalid);
+    EXPECT_EQ(invalid.error(), mka::audio::core::ErrorType::ChannelsNotSupported);
+    cfg.outputChannels = 0;
     ASSERT_TRUE(jack.open(cfg));
     ASSERT_TRUE(jack.start());
 

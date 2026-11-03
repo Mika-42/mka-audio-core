@@ -220,3 +220,22 @@ TEST_F(JackRtContractTest, NoLibcAllocationOnAudioThread) {
     ASSERT_TRUE(enough) << "pas assez de cycles observés : " << state.calls.load();
     EXPECT_EQ(allocations, 0u) << "malloc/free détecté(s) sur le thread audio";
 }
+
+TEST_F(JackRtContractTest, StartRejectsAServerQuantumChangedSinceOpen) {
+    jack_status_t status{};
+    ClientPtr controller{jack_client_open("mka-quantum-control", JackNoStartServer, &status), &jack_client_close};
+    ASSERT_NE(controller, nullptr);
+    struct RestoreQuantum {
+        jack_client_t* client;
+        jack_nframes_t frames;
+        ~RestoreQuantum() { jack_set_buffer_size(client, frames); }
+    } restore{controller.get(), server.bufferSize};
+    mka::audio::core::JACK backend;
+    ASSERT_TRUE(backend.open(makeConfig(server)));
+    const auto different = server.bufferSize == 256 ? 512u : 256u;
+    ASSERT_EQ(jack_set_buffer_size(controller.get(), different), 0);
+    const auto result = backend.start();
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), mka::audio::core::ErrorType::BufferSizeNotSupported);
+    EXPECT_TRUE(backend.close());
+}
