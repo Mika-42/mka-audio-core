@@ -1384,3 +1384,7 @@ GoogleTest, native SDKs and backends are excluded from the report. Modules with
 no executable regions are listed separately, without a fabricated percentage.
 Each run uses fresh raw profiles; failed tests fail the target even when a report
 can still be generated. Coverage and sanitizers use separate builds.
+
+For direct ALSA sine/record-and-replay tests, use the separate audio test executable
+and explicit input/output PCMs. See [manual ALSA diagnosis](docs/manual-alsa.md)
+for commands, signal levels, bounded waits and hardware mixer/ownership checks.
