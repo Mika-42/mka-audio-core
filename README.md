@@ -1414,3 +1414,10 @@ configuration and native interface release run there, regardless of the caller's
 apartment. Both S_OK and S_FALSE are balanced by CoUninitialize on that same
 thread; failed initialization never uninitializes COM. This control queue is
 separate from the audio worker and is never used by a process callback.
+
+WASAPI discovery reports active capture/render IDs and their native mix-format
+channels, sample rate and representation. Default device periods become bounded,
+rounded-up frame-count latency hints. Failed or malformed mix-format queries are
+not replaced with invented capabilities. This is a conservative snapshot; open
+revalidates the exact requested configuration. A shared mix layout is not a
+promise that every channel/rate/format combination is supported.

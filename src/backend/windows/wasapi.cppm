@@ -14,8 +14,23 @@ public:
 protected:
     std::vector<Endpoint> getEndPoints_() const override {
         std::vector<Endpoint> endpoints;
-        for (auto& device : mka_wasapi_detail::enumerateDevices(control_))
-            endpoints.push_back(Endpoint{.id = std::move(device.id), .name = std::move(device.name)});
+        for (auto& device : mka_wasapi_detail::enumerateDevices(control_)) {
+            if (!device.kind) continue;
+            Format format = Format::Float32;
+            using Kind = mka_wasapi_detail::SampleKind;
+            switch (*device.kind) {
+                case Kind::S16: format = Format::Int16; break;
+                case Kind::S24Packed: case Kind::S24In32: format = Format::Int24; break;
+                case Kind::S32: format = Format::Int32; break;
+                case Kind::F32: format = Format::Float32; break;
+                case Kind::F64: format = Format::Float64; break;
+            }
+            StreamCapabilities caps{device.channels, device.channels, {device.rate}, {format}, std::move(device.bufferSizes)};
+            Endpoint endpoint{.id = std::move(device.id), .name = std::move(device.name)};
+            if (device.flow == eCapture) endpoint.input = std::move(caps);
+            else endpoint.output = std::move(caps);
+            endpoints.push_back(std::move(endpoint));
+        }
         return endpoints;
     }
     Result open_(const EndpointConfig&) override {

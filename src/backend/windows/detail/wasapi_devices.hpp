@@ -1,5 +1,6 @@
 #pragma once
 #include "wasapi_control.hpp"
+#include "wasapi_format.hpp"
 #include <mmdeviceapi.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <propsys.h>
@@ -39,6 +40,9 @@ inline std::wstring utf16(std::string_view text) {
 struct DeviceInfo {
     std::string id, name;
     EDataFlow flow = eAll;
+    std::optional<SampleKind> kind;
+    std::uint32_t channels = 0, rate = 0;
+    std::vector<std::uint32_t> bufferSizes;
 };
 inline HRESULT createEnumerator(const ComApi& api, IMMDeviceEnumerator** out) {
     return api.create(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
@@ -76,6 +80,17 @@ inline std::vector<DeviceInfo> enumerateDevices(ControlThread& control) {
                     && value.value.vt == VT_LPWSTR) info.name = utf8(value.value.pwszVal);
             }
             if (info.name.empty()) info.name = info.id;
+            ComPtr<IAudioClient> client;
+            if (FAILED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+                reinterpret_cast<void**>(client.GetAddressOf()))) || !client) continue;
+            WAVEFORMATEX* rawFormat = nullptr;
+            const auto mixResult = client->GetMixFormat(&rawFormat);
+            TaskPtr<WAVEFORMATEX> mix(rawFormat);
+            if (FAILED(mixResult) || !mix || !validWaveFormat(*mix)) continue;
+            info.kind = sampleKind(*mix); info.channels = mix->nChannels; info.rate = mix->nSamplesPerSec;
+            REFERENCE_TIME period = 0, minimum = 0;
+            if (SUCCEEDED(client->GetDevicePeriod(&period, &minimum)))
+                if (auto frames = periodFrames(period, info.rate)) info.bufferSizes.push_back(*frames);
             result.push_back(std::move(info));
         }
         return result;
