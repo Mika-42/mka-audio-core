@@ -1404,3 +1404,7 @@ Linux-only allocator interposition is not part of this Windows preset.
 target. Import `mka.audio.backend.wasapi` for `mka::audio::core::Wasapi`; the
 original empty module name `wasapi` remains available as a compatibility import.
 Requesting WASAPI on a non-Windows target fails explicitly during configuration.
+CMake currently recognizes MSVC's `/std:c++latest` under `cxx_std_23`, not
+`cxx_std_26`; the Windows build uses that CMake feature while compiling in
+`/std:c++latest` draft mode. Other compilers continue to require `cxx_std_26`.
+This does not claim that MSVC implements every future C++26 language feature.
