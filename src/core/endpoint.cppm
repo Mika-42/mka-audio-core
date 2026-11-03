@@ -21,6 +21,8 @@ export namespace mka::audio::core {
         std::vector<BufferSize> bufferSizes;
     };
 
+    // Découverte par Backend::getEndPoints() : identité et capacités réunies.
+    // input/output absents signifient que la direction n’est pas exposée.
     struct Endpoint {
         std::string id;
         std::string name;
