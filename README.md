@@ -1275,3 +1275,29 @@ PulseAudio conversions expose only whole frames within both scratch capacity and
 the current write request. Capture fragments can span several bounded callbacks;
 holes and trailing partial frames count as xruns. A failed capture drop disables
 processing and reports failure instead of retrying the same fragment forever.
+
+For reproducible Linux tests without hardware, install the ALSA, JACK, PipeWire,
+WirePlumber and PulseAudio development/runtime tools, then run a test command in
+private virtual servers:
+
+```sh
+bash test/linux/run_virtual_tests.sh ctest --test-dir build --output-on-failure \
+  -R '^(pipewire|jack|pulseaudio|probe)\.|^alsa\.(contract\.|ALSARtContractTest\.|ALSABackendTest\.(OpenValidates|Unlinkable))'
+```
+
+The harness owns its temporary runtime directories, named JACK server, null
+sink/source and continuous silent capture source, and stops them on exit. Set
+`MKA_KEEP_TEST_LOGS=1` to retain fixture logs. The legacy ALSA tests tied to
+`hw:1,0` still require that physical device and are outside this virtual suite.
+Allocation-probe self-tests check ordinary, array, nothrow and aligned C++ `new`,
+and glibc malloc/calloc/realloc/free on a marked audio thread. Run their native
+checks separately from sanitizer builds, which use their own allocator runtime.
+PulseAudio remains a non-RT server backend; these checks do not promise that
+libpulse itself avoids internal allocation or locking.
+
+The virtual PipeWire clients use the fixture's non-RT client configuration and do
+not load RTKit. In this runtime, a minimal SDK-only context create/destroy cycle
+retains allocations from that optional module; the non-RT fixture removes that
+dependency without disabling LeakSanitizer. Production client configuration and
+backend scheduling behavior are unchanged. Hardware and RTKit priority grants
+require separate platform testing.

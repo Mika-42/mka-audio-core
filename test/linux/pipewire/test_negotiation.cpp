@@ -23,7 +23,8 @@ std::atomic<unsigned> checkedChunks{0};
 std::atomic<bool> badChunk{false};
 std::atomic<bool> injectTerminal{false};
 template<class P> bool waitFor(P p) {
-    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    // Large native buffers take longer to cycle under instrumentation.
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(6);
     while (!p() && std::chrono::steady_clock::now() < end) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     return p();
 }

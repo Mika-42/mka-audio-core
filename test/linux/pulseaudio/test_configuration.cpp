@@ -13,7 +13,7 @@ import mka.audio.backend.pulseaudio;
 namespace {
 using namespace mka::audio::core;
 enum class Mismatch { None, Format, Rate, Channels, MissingAttributes, ZeroLength, UnalignedLength, ShortMaximum, ExcessPrebuf, RoundedLatency, StalledContext, StalledStream, StalledCork, StalledScanOperation, RejectedScan };
-Mismatch mismatch = Mismatch::None;
+std::atomic<Mismatch> mismatch{Mismatch::None};
 
 EndpointConfig config() {
     return {"", Direction::Output, 0, 2, 48000, Format::Float32, 256};

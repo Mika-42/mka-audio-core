@@ -464,3 +464,10 @@ if (MKA_BUILD_TESTS AND MKA_BUILD_PULSEAUDIO)
     endforeach()
     gtest_discover_tests(mka-audio-pulse-buffer-tests TEST_PREFIX "pulseaudio.buffer." PROPERTIES TIMEOUT 20)
 endif()
+
+# Allocation interposition and sanitizer runtimes are verified separately.
+if (MKA_BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_CXX_FLAGS MATCHES "-fsanitize=")
+    add_executable(mka-audio-alloc-probe-tests test/test_alloc_probe.cpp test/utils/alloc_probe.cpp)
+    target_link_libraries(mka-audio-alloc-probe-tests PRIVATE GTest::gtest_main)
+    gtest_discover_tests(mka-audio-alloc-probe-tests TEST_PREFIX "probe." PROPERTIES TIMEOUT 10)
+endif()
