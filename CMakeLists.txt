@@ -454,3 +454,13 @@ if (MKA_BUILD_TESTS AND MKA_BUILD_PIPEWIRE)
     endforeach()
     gtest_discover_tests(mka-audio-pipewire-contract-tests TEST_PREFIX "pipewire.contract." PROPERTIES TIMEOUT 20)
 endif()
+
+if (MKA_BUILD_TESTS AND MKA_BUILD_PULSEAUDIO)
+    add_executable(mka-audio-pulse-buffer-tests test/linux/pulseaudio/test_buffers.cpp)
+    target_link_libraries(mka-audio-pulse-buffer-tests PRIVATE mka-audio-pulseaudio PkgConfig::PULSEAUDIO GTest::gtest_main)
+    foreach(symbol pa_threaded_mainloop_new pa_stream_set_write_callback pa_stream_set_read_callback
+            pa_stream_begin_write pa_stream_cancel_write pa_stream_write pa_stream_peek pa_stream_drop)
+        target_link_options(mka-audio-pulse-buffer-tests PRIVATE "-Wl,--wrap=${symbol}")
+    endforeach()
+    gtest_discover_tests(mka-audio-pulse-buffer-tests TEST_PREFIX "pulseaudio.buffer." PROPERTIES TIMEOUT 20)
+endif()

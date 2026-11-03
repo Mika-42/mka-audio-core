@@ -113,10 +113,15 @@ namespace mka::audio::core {
 
             void *data = nullptr;
             std::size_t nbytes = suggested;
-            if (pa_stream_begin_write(s, &data, &nbytes) < 0 || !data) return;
+            const int begun = pa_stream_begin_write(s, &data, &nbytes);
+            if (begun < 0 || !data || reinterpret_cast<std::uintptr_t>(data) % alignof(float) != 0) {
+                if (begun >= 0) pa_stream_cancel_write(s);
+                if (self->active_.load(std::memory_order_acquire)) self->notifyXRun();
+                return;
+            }
 
             // Clamp défensif : scratch_ contient exactement bufferSize_ échantillons par canal.
-            const std::size_t frames = std::min<std::size_t>(nbytes / bytesPerFrame, self->bufferSize_);
+            const std::size_t frames = std::min<std::size_t>({nbytes / bytesPerFrame, self->bufferSize_, remaining / bytesPerFrame});
             if (frames == 0) {
                 // Évite une boucle infinie sous le verrou du mainloop.
                 pa_stream_cancel_write(s);
@@ -155,18 +160,33 @@ namespace mka::audio::core {
         const auto bytesPerFrame = static_cast<std::size_t>(self->channels_) * sizeof(float);
         if (bytesPerFrame == 0) return;
 
+        const auto drop = [&]() noexcept {
+            if (pa_stream_drop(s) >= 0) return true;
+            self->active_.store(false, std::memory_order_release);
+            self->notifyFailed();
+            return false;
+        };
         for (;;) {
             const void *data = nullptr;
             std::size_t nbytes = 0;
-            if (pa_stream_peek(s, &data, &nbytes) < 0) return;
+            if (pa_stream_peek(s, &data, &nbytes) < 0) {
+                if (self->active_.load(std::memory_order_acquire)) self->notifyXRun();
+                return;
+            }
             if (nbytes == 0) return;
 
             if (!data) {
                 // Trou dans le flux : données perdues côté serveur.
                 if (self->active_.load(std::memory_order_acquire)) self->notifyXRun();
-                pa_stream_drop(s);
+                if (!drop()) return;
                 continue;
             }
+            if (reinterpret_cast<std::uintptr_t>(data) % alignof(float) != 0) {
+                if (self->active_.load(std::memory_order_acquire)) self->notifyXRun();
+                if (!drop()) return;
+                continue;
+            }
+            if (nbytes % bytesPerFrame != 0 && self->active_.load(std::memory_order_acquire)) self->notifyXRun();
 
             const auto *in = static_cast<const float *>(data);
             std::size_t framesLeft = nbytes / bytesPerFrame;
@@ -194,7 +214,7 @@ namespace mka::audio::core {
                 framesLeft -= frames;
             }
 
-            pa_stream_drop(s);
+            if (!drop()) return;
         }
     }
 

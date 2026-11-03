@@ -1270,3 +1270,8 @@ five-second deadline per phase. Timed-out operations are cancelled under the
 native loop lock before their callback state is destroyed. Discovery returns its
 existing empty-snapshot result on timeout or query failure; no exception escapes
 its C callbacks. These waits remain outside the process callback.
+
+PulseAudio conversions expose only whole frames within both scratch capacity and
+the current write request. Capture fragments can span several bounded callbacks;
+holes and trailing partial frames count as xruns. A failed capture drop disables
+processing and reports failure instead of retrying the same fragment forever.
