@@ -110,3 +110,9 @@ TEST(DirectionContractTest, RejectsAnUnknownDirectionBeforeTheNativeHook) {
     EXPECT_EQ(backend.openCalls, 0u);
 }
 }
+
+static_assert(std::is_same_v<decltype(mka::audio::core::InputBuffer::channels), const float* const*>);
+static_assert(std::is_same_v<decltype(mka::audio::core::OutputBuffer::channels), float* const*>);
+static_assert(std::is_nothrow_invocable_v<mka::audio::core::ProcessFunction, void*, const mka::audio::core::AudioProcessContext&>);
+static_assert(!std::is_assignable_v<decltype(std::declval<mka::audio::core::InputBuffer>().channels[0][0]), float>);
+static_assert(!std::is_assignable_v<decltype(std::declval<mka::audio::core::OutputBuffer>().channels[0]), float*>);

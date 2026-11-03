@@ -335,6 +335,12 @@ if (MKA_BUILD_TESTS)
 
     endif ()
 
+    if (MKA_BUILD_PIPEWIRE)
+        add_executable(mka-audio-pipewire-buffer-tests test/linux/pipewire/test_buffer_contract.cpp)
+        target_link_libraries(mka-audio-pipewire-buffer-tests PRIVATE GTest::gtest_main PkgConfig::PIPEWIRE)
+        gtest_discover_tests(mka-audio-pipewire-buffer-tests TEST_PREFIX "pipewire.buffer.")
+    endif ()
+
     # --------------------------------------------------------
     # JACK tests
     # --------------------------------------------------------

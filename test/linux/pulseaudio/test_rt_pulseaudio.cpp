@@ -159,3 +159,40 @@ TEST_F(PulseAudioRtContractTest, CallbackFramesStayInsidePreallocatedCapacity) {
     EXPECT_GE(state.frames.load(), state.calls.load());
     EXPECT_LE(state.frames.load(), static_cast<std::uint64_t>(state.calls.load()) * kBuffer);
 }
+
+TEST(PulseAudioInputBufferContractTest, InputIsReadableAndTheAbsentOutputIsNull) {
+    mka::audio::core::PulseAudio pa;
+    std::string inputId;
+    for (const auto& endpoint : pa.getEndPoints()) {
+        if (endpoint.input) { inputId = endpoint.id; break; }
+    }
+    if (inputId.empty()) GTEST_SKIP() << "aucune source PulseAudio disponible";
+    struct State { std::atomic<unsigned> calls{0}; std::atomic<bool> invalid{false}; } state;
+    ASSERT_TRUE(pa.setProcessFunction([](void* user, const mka::audio::core::AudioProcessContext& ctx) noexcept {
+        auto& s = *static_cast<State*>(user);
+        if (!ctx.input.channels || ctx.input.count != kChannels || ctx.output.channels
+            || ctx.output.count != 0 || ctx.frames == 0 || ctx.frames > kBuffer) {
+            s.invalid.store(true); return;
+        }
+        for (std::uint32_t ch = 0; ch < ctx.input.count; ++ch) {
+            if (!ctx.input.channels[ch]) { s.invalid.store(true); return; }
+            // Volatile read prevents optimization from hiding a bad input range.
+            for (std::uint32_t f = 0; f < ctx.frames; ++f) {
+                [[maybe_unused]] volatile float sample = ctx.input.channels[ch][f];
+            }
+        }
+        s.calls.fetch_add(1);
+    }, &state));
+    mka::audio::core::EndpointConfig config{
+        .id = inputId, .direction = mka::audio::core::Direction::Input,
+        .inputChannels = kChannels, .outputChannels = 0, .sampleRate = kRate,
+        .format = mka::audio::core::Format::Float32, .bufferSize = kBuffer
+    };
+    ASSERT_TRUE(pa.open(config));
+    ASSERT_TRUE(pa.start());
+    const bool enough = rt_test::waitFor([&] { return state.calls.load() >= 4; });
+    ASSERT_TRUE(pa.stop());
+    ASSERT_TRUE(pa.close());
+    EXPECT_TRUE(enough);
+    EXPECT_FALSE(state.invalid.load());
+}
