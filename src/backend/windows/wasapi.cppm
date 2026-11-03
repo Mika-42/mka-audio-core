@@ -59,6 +59,8 @@ private:
         if (result == HRESULT_FROM_WIN32(ERROR_NOT_FOUND) || result == E_ACCESSDENIED
             || result == AUDCLNT_E_DEVICE_INVALIDATED || result == AUDCLNT_E_SERVICE_NOT_RUNNING)
             return std::unexpected{ErrorType::EndpointUnavailable};
+        if (result == AUDCLNT_E_BUFFER_SIZE_ERROR || result == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED
+            || result == AUDCLNT_E_INVALID_DEVICE_PERIOD) return std::unexpected{ErrorType::BufferSizeNotSupported};
         if (result == AUDCLNT_E_UNSUPPORTED_FORMAT) return std::unexpected{ErrorType::FormatNotSupported};
         if (result == AUDCLNT_E_WRONG_ENDPOINT_TYPE) return std::unexpected{ErrorType::ChannelsNotSupported};
         return std::unexpected{ErrorType::ConfigurationFailed};

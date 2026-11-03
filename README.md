@@ -1434,3 +1434,9 @@ A closest match (`S_FALSE`) is freed and rejected; rate, channels and portable
 format are never silently substituted. WAVEFORMATEXTENSIBLE sizes, byte-rate
 arithmetic and speaker masks are checked. Int24 retains a low-aligned 24-in-32
 container when the native mix uses it; otherwise the request uses packed 24-bit.
+
+Shared WASAPI initialization uses the exact validated format, event-callback flag,
+zero periodicity and the requested frame count converted to a rounded-up
+REFERENCE_TIME duration. Native buffer capacity is read back and bounded before
+use. `bufferSize` requests latency; it is not a fixed DSP callback size. Failed
+initialization or malformed capacity releases the pending client and allows retry.
