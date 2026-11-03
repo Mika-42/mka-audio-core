@@ -1,6 +1,10 @@
 #include <pipewire/pipewire.h>
 #include <spa/param/audio/format-utils.h>
 #include <atomic>
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <string>
 #include <chrono>
 #include <expected>
 #include <thread>
@@ -9,15 +13,24 @@ import mka.audio.backend.abstract;
 import mka.audio.backend.pipewire;
 namespace {
 using namespace mka::audio::core;
-enum class Fault { None, Format, Rate, Channels, Malformed };
+enum class Fault { None, Format, Rate, Channels, Malformed, SmallQuantum, HugeQuantum };
 std::atomic<Fault> fault{Fault::None};
 std::atomic<int> liveStreams{0};
+std::string requestedLatency;
+std::atomic<std::uint32_t> expectedFrames{0};
+std::atomic<unsigned> checkedChunks{0};
+std::atomic<bool> badChunk{false};
+template<class P> bool waitFor(P p) {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (!p() && std::chrono::steady_clock::now() < end) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    return p();
+}
 const pw_stream_events* nativeEvents = nullptr;
 pw_stream_events interceptedEvents{};
 spa_audio_info_raw requested{};
 pw_stream_flags requestedFlags{};
 void interceptFormat(void* data, std::uint32_t id, const spa_pod* pod) {
-    if (id != SPA_PARAM_Format || !pod || fault == Fault::None) {
+    if (id != SPA_PARAM_Format || !pod || fault == Fault::None || fault == Fault::SmallQuantum || fault == Fault::HugeQuantum) {
         nativeEvents->param_changed(data,id,pod); return;
     }
     if (fault == Fault::Malformed) {
@@ -46,6 +59,8 @@ protected:
 extern "C" {
 pw_stream* __real_pw_stream_new_simple(pw_loop*,const char*,pw_properties*,const pw_stream_events*,void*);
 pw_stream* __wrap_pw_stream_new_simple(pw_loop* loop,const char* name,pw_properties* props,const pw_stream_events* events,void* data) {
+    const char* latency = pw_properties_get(props,PW_KEY_NODE_LATENCY);
+    requestedLatency = latency ? latency : "";
     nativeEvents = events; interceptedEvents = *events; interceptedEvents.param_changed = interceptFormat;
     auto* stream = __real_pw_stream_new_simple(loop,name,props,&interceptedEvents,data);
     if (stream) ++liveStreams;
@@ -91,4 +106,53 @@ TEST_F(PipeWireNativeContract, RejectsNonFloat32RequestsBeforeNativeStreamCreati
         EXPECT_EQ(b.open(invalid).error(),ErrorType::FormatNotSupported);
     }
     ASSERT_TRUE(b.open(cfg)); ASSERT_TRUE(b.close());
+}
+
+extern "C" {
+pw_buffer* __real_pw_stream_dequeue_buffer(pw_stream*);
+pw_buffer* __wrap_pw_stream_dequeue_buffer(pw_stream* stream) {
+    auto* b = __real_pw_stream_dequeue_buffer(stream);
+    if (!b || (fault != Fault::SmallQuantum && fault != Fault::HugeQuantum)) return b;
+    std::uint32_t capacity = UINT32_MAX;
+    for (std::uint32_t i = 0; i < b->buffer->n_datas; ++i) {
+        auto& d = b->buffer->datas[i]; capacity = std::min<std::uint32_t>(capacity,d.maxsize/sizeof(float));
+        if (d.chunk) d.chunk->flags = SPA_CHUNK_FLAG_CORRUPTED;
+    }
+    b->requested = fault == Fault::SmallQuantum ? 17 : UINT64_MAX;
+    expectedFrames = static_cast<std::uint32_t>(std::min<std::uint64_t>(capacity,b->requested));
+    return b;
+}
+int __real_pw_stream_queue_buffer(pw_stream*,pw_buffer*);
+int __wrap_pw_stream_queue_buffer(pw_stream* stream,pw_buffer* b) {
+    if ((fault == Fault::SmallQuantum || fault == Fault::HugeQuantum) && b->buffer->n_datas
+        && b->buffer->datas[0].chunk && b->buffer->datas[0].chunk->size > 0) {
+        for (std::uint32_t i = 0; i < b->buffer->n_datas; ++i) {
+            const auto& d = b->buffer->datas[i];
+            if (!d.chunk || d.chunk->offset != 0 || d.chunk->stride != sizeof(float)
+                || d.chunk->size != expectedFrames.load()*sizeof(float)
+                || d.chunk->size > d.maxsize || d.chunk->flags != 0) badChunk = true;
+        }
+        ++checkedChunks;
+    }
+    return __real_pw_stream_queue_buffer(stream,b);
+}
+}
+TEST_F(PipeWireNativeContract, LatencyRequestAndEffectiveCallbackFramesRespectNativeCapacity) {
+    for (const auto request : {Fault::SmallQuantum,Fault::HugeQuantum}) {
+        PipeWire b; std::atomic<unsigned> calls{0}; std::atomic<bool> wrongFrames{false};
+        struct Seen { std::atomic<unsigned>& calls; std::atomic<bool>& wrong; } seen{calls,wrongFrames};
+        ASSERT_TRUE(b.setProcessFunction(+[](void* u,const AudioProcessContext& ctx) noexcept {
+            auto& s = *static_cast<Seen*>(u);
+            if (ctx.frames != expectedFrames.load() || ctx.frames == 0) s.wrong = true;
+            ++s.calls;
+        },&seen));
+        ASSERT_TRUE(b.open(cfg));
+        EXPECT_EQ(requestedLatency,std::to_string(cfg.bufferSize)+"/"+std::to_string(cfg.sampleRate));
+        checkedChunks = 0; badChunk = false; fault = request;
+        ASSERT_TRUE(b.start());
+        EXPECT_TRUE(waitFor([&] { return calls.load() > 10; }));
+        ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
+        EXPECT_FALSE(wrongFrames.load()); EXPECT_FALSE(badChunk.load()); EXPECT_GT(checkedChunks.load(),0u);
+        fault = Fault::None;
+    }
 }
