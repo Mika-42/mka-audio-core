@@ -1264,3 +1264,9 @@ PulseAudio reads the negotiated buffer attributes once the native stream is read
 The effective playback length or capture fragment must contain whole frames and
 fit the server's maximum. Server rounding remains allowed: `bufferSize` requests
 latency, while callback frames stay bounded by preallocated scratch capacity.
+
+PulseAudio control waits, including discovery context/list operations, have a
+five-second deadline per phase. Timed-out operations are cancelled under the
+native loop lock before their callback state is destroyed. Discovery returns its
+existing empty-snapshot result on timeout or query failure; no exception escapes
+its C callbacks. These waits remain outside the process callback.

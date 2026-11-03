@@ -12,7 +12,7 @@ import mka.audio.backend.pulseaudio;
 
 namespace {
 using namespace mka::audio::core;
-enum class Mismatch { None, Format, Rate, Channels, MissingAttributes, ZeroLength, UnalignedLength, ShortMaximum, ExcessPrebuf, RoundedLatency };
+enum class Mismatch { None, Format, Rate, Channels, MissingAttributes, ZeroLength, UnalignedLength, ShortMaximum, ExcessPrebuf, RoundedLatency, StalledContext, StalledStream, StalledCork, StalledScanOperation, RejectedScan };
 Mismatch mismatch = Mismatch::None;
 
 EndpointConfig config() {
@@ -142,4 +142,67 @@ TEST_F(PulseConfigurationTest, ChecksNegotiatedLengthsAndAcceptsServerLatencyRou
     }
     mismatch = Mismatch::ExcessPrebuf; PulseAudio b;
     EXPECT_EQ(b.open(config()).error(),ErrorType::BufferSizeNotSupported);
+}
+
+namespace { unsigned cancelledOperations = 0; }
+extern "C" {
+pa_context_state_t __real_pa_context_get_state(const pa_context*);
+pa_context_state_t __wrap_pa_context_get_state(const pa_context* c) {
+    if (mismatch == Mismatch::StalledContext) return PA_CONTEXT_CONNECTING;
+    return __real_pa_context_get_state(c);
+}
+pa_stream_state_t __real_pa_stream_get_state(const pa_stream*);
+pa_stream_state_t __wrap_pa_stream_get_state(const pa_stream* s) {
+    if (mismatch == Mismatch::StalledStream) return PA_STREAM_CREATING;
+    return __real_pa_stream_get_state(s);
+}
+pa_operation_state_t __real_pa_operation_get_state(const pa_operation*);
+pa_operation_state_t __wrap_pa_operation_get_state(const pa_operation* op) {
+    if (mismatch == Mismatch::StalledScanOperation) return PA_OPERATION_RUNNING;
+    return __real_pa_operation_get_state(op);
+}
+void __real_pa_operation_cancel(pa_operation*);
+void __wrap_pa_operation_cancel(pa_operation* op) { ++cancelledOperations; __real_pa_operation_cancel(op); }
+pa_operation* __real_pa_stream_cork(pa_stream*,int,pa_stream_success_cb_t,void*);
+pa_operation* __wrap_pa_stream_cork(pa_stream* s,int cork,pa_stream_success_cb_t callback,void* user) {
+    if (mismatch == Mismatch::StalledCork) return __real_pa_stream_cork(s,cork,nullptr,nullptr);
+    return __real_pa_stream_cork(s,cork,callback,user);
+}
+pa_operation* __real_pa_context_get_sink_info_list(pa_context*,pa_sink_info_cb_t,void*);
+pa_operation* __wrap_pa_context_get_sink_info_list(pa_context* c,pa_sink_info_cb_t callback,void* user) {
+    if (mismatch == Mismatch::RejectedScan) return nullptr;
+    return __real_pa_context_get_sink_info_list(c,callback,user);
+}
+}
+TEST_F(PulseConfigurationTest, ServerContextAndStreamWaitsTimeoutAndReleaseForRetry) {
+    for (const auto injected : {Mismatch::StalledContext,Mismatch::StalledStream}) {
+        PulseAudio b; mismatch = injected;
+        const auto before = std::chrono::steady_clock::now();
+        const auto result = b.open(config()); ASSERT_FALSE(result);
+        EXPECT_EQ(result.error(),ErrorType::EndpointUnavailable);
+        EXPECT_LT(std::chrono::steady_clock::now()-before,std::chrono::seconds(7));
+        mismatch = Mismatch::None; ASSERT_TRUE(b.open(config())); ASSERT_TRUE(b.close());
+    }
+}
+TEST_F(PulseConfigurationTest, CorkTimeoutCancelsCompletionAndLeavesOpenForRetry) {
+    PulseAudio b; std::atomic<unsigned> calls{0};
+    ASSERT_TRUE(b.setProcessFunction(+[](void* u,const AudioProcessContext&) noexcept { ++*static_cast<std::atomic<unsigned>*>(u); },&calls));
+    ASSERT_TRUE(b.open(config())); mismatch = Mismatch::StalledCork; cancelledOperations = 0;
+    const auto before = std::chrono::steady_clock::now();
+    EXPECT_EQ(b.start().error(),ErrorType::ConfigurationFailed);
+    EXPECT_LT(std::chrono::steady_clock::now()-before,std::chrono::seconds(7));
+    EXPECT_GT(cancelledOperations,0u);
+    const auto count = calls.load(); std::this_thread::sleep_for(std::chrono::milliseconds(20)); EXPECT_EQ(calls.load(),count);
+    mismatch = Mismatch::None; ASSERT_TRUE(b.start()); ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
+}
+TEST_F(PulseConfigurationTest, DiscoveryContextAndOperationWaitsAreBoundedAndRecoverable) {
+    PulseAudio b;
+    for (const auto injected : {Mismatch::StalledContext,Mismatch::StalledScanOperation,Mismatch::RejectedScan}) {
+        mismatch = injected; cancelledOperations = 0;
+        const auto before = std::chrono::steady_clock::now();
+        EXPECT_TRUE(b.getEndPoints().empty());
+        EXPECT_LT(std::chrono::steady_clock::now()-before,std::chrono::seconds(7));
+        if (injected == Mismatch::StalledScanOperation) EXPECT_GT(cancelledOperations,0u);
+        mismatch = Mismatch::None; EXPECT_FALSE(b.getEndPoints().empty());
+    }
 }

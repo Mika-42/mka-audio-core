@@ -462,6 +462,7 @@ namespace mka::audio::core {
             pa_threaded_mainloop *loop = nullptr;
             std::vector<SinkSourceInfo> sinks;
             std::vector<SinkSourceInfo> sources;
+            bool failed = false;
         };
 
         void onScanContextState(pa_context * /*c*/, void *userdata) {
@@ -471,30 +472,34 @@ namespace mka::audio::core {
 
         void onSinkInfo(pa_context * /*c*/, const pa_sink_info *info, const int eol, void *userdata) {
             auto *state = static_cast<ScanState *>(userdata);
-            if (!eol && info && info->name) {
-                state->sinks.push_back({ info->name, info->sample_spec.channels });
-            }
+            if (eol < 0) state->failed = true;
+            try {
+                if (!eol && info && info->name)
+                    state->sinks.push_back({ info->name, info->sample_spec.channels });
+            } catch (...) { state->failed = true; }
             pa_threaded_mainloop_signal(state->loop, 0);
         }
 
         void onSourceInfo(pa_context * /*c*/, const pa_source_info *info, const int eol, void *userdata) {
             auto *state = static_cast<ScanState *>(userdata);
-            if (!eol && info && info->name) {
-                // Ignore les sources "monitor" (capture de la sortie d'un sink) :
-                // ce ne sont pas des périphériques d'entrée physiques.
-                if (info->monitor_of_sink == PA_INVALID_INDEX) {
+            if (eol < 0) state->failed = true;
+            try {
+                // Ignore monitor sources: they capture a sink, not an input device.
+                if (!eol && info && info->name && info->monitor_of_sink == PA_INVALID_INDEX)
                     state->sources.push_back({ info->name, info->sample_spec.channels });
-                }
-            }
+            } catch (...) { state->failed = true; }
             pa_threaded_mainloop_signal(state->loop, 0);
         }
 
-        void waitOperation(pa_threaded_mainloop *loop, pa_operation *op) {
-            if (!op) return;
-            while (pa_operation_get_state(op) == PA_OPERATION_RUNNING) {
-                pa_threaded_mainloop_wait(loop);
-            }
+        bool waitOperation(pa_threaded_mainloop *loop, pa_operation *op, ScanState& state) {
+            if (!op) return false;
+            const bool completed = waitPulse(loop, [&] {
+                return state.failed || pa_operation_get_state(op) != PA_OPERATION_RUNNING;
+            });
+            const bool success = completed && !state.failed && pa_operation_get_state(op) == PA_OPERATION_DONE;
+            if (!success) pa_operation_cancel(op);
             pa_operation_unref(op);
+            return success;
         }
     }
 
@@ -530,17 +535,14 @@ namespace mka::audio::core {
                 return {};
             }
 
-            bool ready = false;
-            for (;;) {
+            bool ready = waitPulse(scanLoop, [&] {
                 const auto st = pa_context_get_state(context);
-                if (st == PA_CONTEXT_READY) { ready = true; break; }
-                if (!PA_CONTEXT_IS_GOOD(st)) break;
-                pa_threaded_mainloop_wait(scanLoop);
-            }
+                return st == PA_CONTEXT_READY || !PA_CONTEXT_IS_GOOD(st);
+            }) && pa_context_get_state(context) == PA_CONTEXT_READY;
 
             if (ready) {
-                waitOperation(scanLoop, pa_context_get_sink_info_list(context, &onSinkInfo, &state));
-                waitOperation(scanLoop, pa_context_get_source_info_list(context, &onSourceInfo, &state));
+                ready = waitOperation(scanLoop, pa_context_get_sink_info_list(context, &onSinkInfo, &state), state)
+                    && waitOperation(scanLoop, pa_context_get_source_info_list(context, &onSourceInfo, &state), state);
             }
 
             pa_context_disconnect(context);
