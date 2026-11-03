@@ -1367,3 +1367,20 @@ Float reads preserve NaN; Float64 values outside the finite Float32 range become
 signed infinity. Zero-frame calls may use null pointers, and a one-frame call
 never uses its stride to form an unused next pointer. Callers must provide valid
 storage for every sample actually accessed.
+
+To produce the same source coverage report as CI, use Clang with matching
+`llvm-cov`/`llvm-profdata` tools and run:
+
+```sh
+cmake --preset coverage
+cmake --build --preset coverage --parallel 2
+```
+
+The `coverage` target executes the real core CTest suite and generates
+`build/coverage/coverage/html/index.html`, `lcov.info`, `report.txt`, a JSON
+summary, merged profile and JUnit results. CI uploads these as `core-coverage`,
+including diagnostics on failure. Only `src/core/*.cppm` is measured; tests,
+GoogleTest, native SDKs and backends are excluded from the report. Modules with
+no executable regions are listed separately, without a fabricated percentage.
+Each run uses fresh raw profiles; failed tests fail the target even when a report
+can still be generated. Coverage and sanitizers use separate builds.

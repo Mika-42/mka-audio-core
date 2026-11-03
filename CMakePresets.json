@@ -21,7 +21,8 @@
         "MKA_BUILD_PULSEAUDIO": "OFF",
         "BUILD_GMOCK": "OFF",
         "INSTALL_GTEST": "OFF",
-        "MKA_SANITIZER": "none"
+        "MKA_SANITIZER": "none",
+        "MKA_ENABLE_COVERAGE": "OFF"
       }
     },
     {
@@ -39,6 +40,14 @@
       "cacheVariables": {
         "MKA_SANITIZER": "thread"
       }
+    },
+    {
+      "name": "coverage",
+      "inherits": "core",
+      "displayName": "LLVM core source coverage",
+      "cacheVariables": {
+        "MKA_ENABLE_COVERAGE": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -53,6 +62,13 @@
     {
       "name": "tsan",
       "configurePreset": "tsan"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
+      "targets": [
+        "coverage"
+      ]
     }
   ],
   "testPresets": [
