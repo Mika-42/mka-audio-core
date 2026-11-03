@@ -1352,3 +1352,10 @@ cycle verifies callback progress, invalid transitions, joined workers and zero
 live resources, then frees both user contexts before reopening. The stress cases
 also run in the core ASan/UBSan and TSan presets; they are a core lifecycle test,
 not a substitute for native-device endurance testing.
+
+The core already converts hook exceptions to `ConfigurationFailed` and preserves
+the preceding lifecycle state. Rollback tests exercise `std::bad_alloc`, standard
+and non-standard exceptions at every lifecycle hook and discovery, including
+pending allocations and threads. A hook owns cleanup of resources acquired
+before throwing; the base cannot release SDK-specific partial state. Successful
+retry, user-context preservation and quiescence are checked under both sanitizers.
