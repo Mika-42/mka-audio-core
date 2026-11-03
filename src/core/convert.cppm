@@ -9,18 +9,19 @@
 //      S24Packed : 3 octets little-endian (SND_PCM_FORMAT_S24_3LE).
 //    Le code d'origine traitait S24 comme un int32 pleine échelle : signal ~48 dB trop
 //    faible en lecture, débordement (bruit) en écriture.
-//  - Écriture : NaN -> 0, saturation à [-1, 1], arrondi au plus proche. Plus de
+//  - Écriture entière : NaN -> 0, saturation à [-1, 1], arrondi au plus proche. Plus de
 //    conversion float->int hors bornes (comportement indéfini).
 //  - Aucun reinterpret_cast : tous les accès passent par memcpy (pas de problème
 //    d'alignement ni de strict aliasing).
 //  - Le `switch` sur le format est hors de la boucle : une boucle serrée par format,
-//    sans branche par échantillon, sans allocation, noexcept => utilisable en RT.
+//    sans allocation, noexcept => utilisable en RT.
 //
 module;
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 export module mka.audio.convert;
 
@@ -70,6 +71,11 @@ namespace mka::audio::convert::detail {
     inline float loadF64(const std::byte* p) noexcept {
         double v;
         std::memcpy(&v, p, sizeof v);
+        // Define narrowing outside the finite Float32 range explicitly. NaNs
+        // remain NaNs on reads; only writes sanitize them to zero.
+        constexpr auto max = static_cast<double>(std::numeric_limits<float>::max());
+        if (v > max) return std::numeric_limits<float>::infinity();
+        if (v < -max) return -std::numeric_limits<float>::infinity();
         return static_cast<float>(v);
     }
 
@@ -113,13 +119,21 @@ namespace mka::audio::convert::detail {
     template <class Load>
     inline void readLoop(const std::byte* src, const std::size_t stride, float* dst,
                          const std::size_t frames, Load load) noexcept {
-        for (std::size_t i = 0; i < frames; ++i, src += stride) dst[i] = load(src);
+        for (std::size_t i = 0; i < frames;) {
+            dst[i] = load(src);
+            if (++i == frames) break;
+            src += stride;
+        }
     }
 
     template <class Store>
     inline void writeLoop(std::byte* dst, const std::size_t stride, const float* src,
                           const std::size_t frames, Store store) noexcept {
-        for (std::size_t i = 0; i < frames; ++i, dst += stride) store(dst, src[i]);
+        for (std::size_t i = 0; i < frames;) {
+            store(dst, src[i]);
+            if (++i == frames) break;
+            dst += stride;
+        }
     }
 }
 
@@ -147,7 +161,9 @@ export namespace mka::audio::convert {
     }
 
     // Lit `frames` échantillons espacés de `strideBytes` octets (un canal d'un buffer
-    // entrelacé ou non) vers `dst` en float.
+    // entrelacé ou non) vers `dst` en float. Le stockage doit couvrir tous les
+    // échantillons accédés ; avec frames == 0, les pointeurs peuvent être nuls.
+    // Aucun pointeur vers un échantillon suivant le dernier n’est formé.
     inline void readChannel(const Layout layout, const std::byte* src, const std::size_t strideBytes,
                             float* dst, const std::size_t frames) noexcept {
         using namespace detail;

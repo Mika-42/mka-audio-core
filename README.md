@@ -1359,3 +1359,11 @@ and non-standard exceptions at every lifecycle hook and discovery, including
 pending allocations and threads. A hook owns cleanup of resources acquired
 before throwing; the base cannot release SDK-specific partial state. Successful
 retry, user-context preservation and quiescence are checked under both sanitizers.
+
+Conversion edge cases are tested for every layout with unaligned, strided buffers
+and byte canaries. Integer writes sanitize NaN to zero and saturate infinities;
+float writes keep headroom, infinities and signed zero while sanitizing NaN.
+Float reads preserve NaN; Float64 values outside the finite Float32 range become
+signed infinity. Zero-frame calls may use null pointers, and a one-frame call
+never uses its stride to form an unused next pointer. Callers must provide valid
+storage for every sample actually accessed.

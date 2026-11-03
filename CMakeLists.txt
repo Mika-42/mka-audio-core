@@ -236,6 +236,7 @@ if (MKA_BUILD_TESTS)
             test/test_hook_rollback.cpp
             test/test_sprint02.cpp
             test/test_convert.cpp
+            test/test_convert_extremes.cpp
             test/test_endpoint_contract.cpp
             test/test_error_contract.cpp
     )
