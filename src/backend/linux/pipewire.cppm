@@ -255,7 +255,7 @@ namespace mka::audio::core {
         const std::uint32_t channels = endpointCfg.direction == Direction::Input
                                            ? endpointCfg.inputChannels
                                            : endpointCfg.outputChannels;
-        if (channels == 0)
+        if (channels == 0 || channels > SPA_AUDIO_MAX_CHANNELS)
             return std::unexpected{ErrorType::ChannelsNotSupported};
 
         channels_ = channels;

@@ -19,6 +19,8 @@
 
 import mka.audio.backend.abstract;
 
+#include "utils/backend_test_config.hpp"
+
 namespace {
     using namespace std::chrono_literals;
     using mka::audio::core::ErrorType;
@@ -85,18 +87,18 @@ TEST(BackendExceptionTest, OpenHookThrowingReturnsErrorAndStaysClosed) {
     ThrowingBackend b;
     b.throwOnOpen = true;
 
-    auto res = b.open({});
+    auto res = b.open(testEndpointConfig());
     ASSERT_FALSE(res);
     EXPECT_EQ(res.error(), ErrorType::ConfigurationFailed);
 
     b.throwOnOpen = false;
-    EXPECT_TRUE(b.open({}));       // toujours Closed : un nouvel open est accepté
+    EXPECT_TRUE(b.open(testEndpointConfig()));       // toujours Closed : un nouvel open est accepté
     EXPECT_TRUE(b.close());
 }
 
 TEST(BackendExceptionTest, StartHookThrowingReturnsErrorAndStaysOpen) {
     ThrowingBackend b;
-    ASSERT_TRUE(b.open({}));
+    ASSERT_TRUE(b.open(testEndpointConfig()));
     b.throwOnStart = true;
 
     auto res = b.start();
@@ -111,7 +113,7 @@ TEST(BackendExceptionTest, StartHookThrowingReturnsErrorAndStaysOpen) {
 
 TEST(BackendExceptionTest, StopHookThrowingReturnsErrorAndStaysRunning) {
     ThrowingBackend b;
-    ASSERT_TRUE(b.open({}));
+    ASSERT_TRUE(b.open(testEndpointConfig()));
     ASSERT_TRUE(b.start());
     b.throwOnStop = true;
 
@@ -126,7 +128,7 @@ TEST(BackendExceptionTest, StopHookThrowingReturnsErrorAndStaysRunning) {
 
 TEST(BackendExceptionTest, CloseHookThrowingReturnsErrorAndStaysOpen) {
     ThrowingBackend b;
-    ASSERT_TRUE(b.open({}));
+    ASSERT_TRUE(b.open(testEndpointConfig()));
     b.throwOnClose = true;
 
     auto res = b.close();
@@ -148,7 +150,7 @@ TEST(BackendExceptionTest, GetEndPointsThrowingGivesEmptyList) {
 TEST(BackendThreadSafetyTest, ConcurrentOpenSucceedsExactlyOnce) {
     for (int round = 0; round < 20; ++round) {
         ThrowingBackend b;
-        const int ok = raceCount(8, [&] { return b.open({}).has_value(); });
+        const int ok = raceCount(8, [&] { return b.open(testEndpointConfig()).has_value(); });
         EXPECT_EQ(ok, 1);
         EXPECT_EQ(b.openCalls.load(), 1) << "open_ appelé plusieurs fois";
         ASSERT_TRUE(b.close());
@@ -158,7 +160,7 @@ TEST(BackendThreadSafetyTest, ConcurrentOpenSucceedsExactlyOnce) {
 TEST(BackendThreadSafetyTest, ConcurrentStartSucceedsExactlyOnce) {
     for (int round = 0; round < 20; ++round) {
         ThrowingBackend b;
-        ASSERT_TRUE(b.open({}));
+        ASSERT_TRUE(b.open(testEndpointConfig()));
         const int ok = raceCount(8, [&] { return b.start().has_value(); });
         EXPECT_EQ(ok, 1);
         EXPECT_EQ(b.startCalls.load(), 1);
@@ -175,7 +177,7 @@ TEST(BackendThreadSafetyTest, MixedOperationsKeepAValidState) {
     for (int i = 0; i < 4; ++i) {
         threads.emplace_back([&] {
             while (!stop.load()) {
-                (void)b.open({});
+                (void)b.open(testEndpointConfig());
                 (void)b.start();
                 (void)b.status();
                 (void)b.stop();
@@ -190,7 +192,7 @@ TEST(BackendThreadSafetyTest, MixedOperationsKeepAValidState) {
     // Quel que soit l'entrelacement, on peut revenir à Closed puis refaire un cycle complet.
     (void)b.stop();
     (void)b.close();
-    ASSERT_TRUE(b.open({}));
+    ASSERT_TRUE(b.open(testEndpointConfig()));
     ASSERT_TRUE(b.start());
     ASSERT_TRUE(b.stop());
     ASSERT_TRUE(b.close());
@@ -227,7 +229,7 @@ TEST(BackendReentrancyTest, HandlerCallingStopGetsInvalidStateWithoutDeadlock) {
     probe.backend = &b;
 
     ASSERT_TRUE(b.setEventHandler(reentrantHandler, &probe));
-    ASSERT_TRUE(b.open({}));
+    ASSERT_TRUE(b.open(testEndpointConfig()));
     ASSERT_TRUE(b.start());
 
     b.fakeXRun();

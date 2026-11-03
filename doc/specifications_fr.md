@@ -417,3 +417,5 @@ Le DSP Engine traite l’audio.
 Le DAW décide de ce qui doit être traité.
 
 Toute fonctionnalité qui n’est pas directement liée à la découverte des périphériques, à la découverte de leurs capacités, à la configuration des streams, à leur cycle de vie ou au transport audio temps réel appartient à un composant de niveau supérieur.
+
+`EndpointConfig::direction` exige Input : `inputChannels > 0`, `outputChannels == 0` ; Output : `inputChannels == 0`, `outputChannels > 0` ; Duplex : les deux comptes strictement positifs. Des comptes incohérents retournent `ChannelsNotSupported` avant toute ouverture native. Une direction inconnue retourne `ConfigurationFailed`. Les limites de canaux propres au backend restent applicables.

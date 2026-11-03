@@ -11,6 +11,8 @@
 
 import mka.audio.backend.abstract;
 
+#include "utils/backend_test_config.hpp"
+
 namespace {
     using namespace std::chrono_literals;
 
@@ -64,7 +66,7 @@ namespace {
     }
 
     void startBackend(FakeBackend& b) {
-        ASSERT_TRUE(b.open({}));
+        ASSERT_TRUE(b.open(testEndpointConfig()));
         ASSERT_TRUE(b.start());
     }
 }

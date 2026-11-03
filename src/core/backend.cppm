@@ -91,6 +91,10 @@ export namespace mka::audio::core {
                     return std::unexpected{ ErrorType::InvalidState };
                 }
 
+                // Valide la forme de la demande avant toute ressource native.
+                // Les limites propres au périphérique restent vérifiées par open_().
+                if (auto result = validateDirection(endpointCfg); !result) return result;
+
                 return guarded([&] { return open_(endpointCfg); }).and_then([&]() -> Result {
                     state = State::Open;
                     return {};
@@ -222,6 +226,25 @@ export namespace mka::audio::core {
         private:
             enum class State { Closed, Open, Running };
             State state = State::Closed;
+
+            [[nodiscard]] static Result validateDirection(const EndpointConfig& config) noexcept {
+                bool valid = false;
+                switch (config.direction) {
+                    case Direction::Input:
+                        valid = config.inputChannels > 0 && config.outputChannels == 0;
+                        break;
+                    case Direction::Output:
+                        valid = config.inputChannels == 0 && config.outputChannels > 0;
+                        break;
+                    case Direction::Duplex:
+                        valid = config.inputChannels > 0 && config.outputChannels > 0;
+                        break;
+                    default:
+                        return std::unexpected{ErrorType::ConfigurationFailed};
+                }
+                if (!valid) return std::unexpected{ErrorType::ChannelsNotSupported};
+                return {};
+            }
 
             // Exécute un hook de classe fille en convertissant toute exception en erreur.
             template <class Hook>

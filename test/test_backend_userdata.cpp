@@ -12,6 +12,8 @@
 
 import mka.audio.backend.abstract;
 
+#include "utils/backend_test_config.hpp"
+
 namespace {
     // Backend minimal : les hooks réussissent toujours, et deux accesseurs
     // exposent le callback / le contexte mémorisés par la classe de base.
@@ -112,7 +114,7 @@ TEST(BackendUserDataTest, RejectedSetWhileRunningKeepsPreviousUserData) {
     Counter b;
 
     ASSERT_TRUE(backend.setProcessFunction(countingCallback, &a));
-    ASSERT_TRUE(backend.open({}));
+    ASSERT_TRUE(backend.open(testEndpointConfig()));
     ASSERT_TRUE(backend.start());
 
     auto res = backend.setProcessFunction(countingCallback, &b);
