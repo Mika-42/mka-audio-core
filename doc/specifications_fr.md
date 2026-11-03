@@ -430,3 +430,15 @@ scratch préalloués. Ces demandes ne garantissent ni la latence du serveur ni u
 taille fixe de callback. `AudioProcessContext::frames` fait foi à chaque appel :
 traiter exactement ce nombre d’échantillons par canal. Core Audio n’accumule
 jamais de blocs DSP fixes.
+
+## Durée de vie des pointeurs audio
+
+Les tables `const float* const*` d’entrée et `float* const*` de sortie sont des
+vues planaires Float32 empruntées, alignées pour `float`, valides uniquement
+jusqu’au retour du callback. Ne pas les conserver/libérer, modifier les tables,
+ni les transmettre à un autre thread. Chaque canal actif est non nul et contient
+`frames` échantillons ; un côté absent vaut `{nullptr, 0}`. L’entrée est en lecture
+seule et ne recouvre pas la sortie. La sortie commence au silence à chaque appel ;
+écrire uniquement dans `[0, frames)`. Sans callback, la sortie reste silencieuse.
+`user` doit rester vivant jusqu’au retour de `stop()`, qui attend la fin du
+callback. Les méthodes de contrôle sont interdites depuis le callback audio.

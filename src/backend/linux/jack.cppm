@@ -108,14 +108,19 @@ namespace mka::audio::core {
             self->outBuffers_[i] = static_cast<float *>(jack_port_get_buffer(self->outPorts_[i], nframes));
         }
 
+        if (std::ranges::any_of(self->inBuffers_, [](const float* p) { return p == nullptr; })
+            || std::ranges::any_of(self->outBuffers_, [](const float* p) { return p == nullptr; })) {
+            self->notifyFailed();
+            return 0;
+        }
         for (float *out : self->outBuffers_) {
             std::memset(out, 0, nframes * sizeof(float));
         }
 
         if (self->callback) {
             const AudioProcessContext ctx{
-                .input = { self->inBuffers_.data(), static_cast<std::uint32_t>(self->inBuffers_.size()) },
-                .output = { self->outBuffers_.data(), static_cast<std::uint32_t>(self->outBuffers_.size()) },
+                .input = { self->inBuffers_.empty() ? nullptr : self->inBuffers_.data(), static_cast<std::uint32_t>(self->inBuffers_.size()) },
+                .output = { self->outBuffers_.empty() ? nullptr : self->outBuffers_.data(), static_cast<std::uint32_t>(self->outBuffers_.size()) },
                 .frames = nframes
             };
             self->callback(self->userData, ctx);

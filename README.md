@@ -1113,3 +1113,15 @@ but rather:
 License information has not yet been finalized.
 
 `EndpointConfig::direction` requires Input: `inputChannels > 0`, `outputChannels == 0`; Output: `inputChannels == 0`, `outputChannels > 0`; Duplex: both counts greater than zero. Inconsistent counts return `ChannelsNotSupported` before any native resource is opened. Unknown direction values return `ConfigurationFailed`. Backend-specific channel limits still apply.
+
+## Callback buffer lifetime
+
+`InputBuffer::channels` is `const float* const*`; `OutputBuffer::channels` is
+`float* const*`. Both are borrowed planar Float32 views, aligned for `float`.
+Their pointer tables and samples remain valid only until the callback returns.
+Do not retain/free them, modify the pointer tables, or hand them to other threads.
+Every active channel is non-null and provides `frames` samples; an absent side
+is `{nullptr, 0}`. Input is read-only and does not alias writable output. Output
+starts as silence on every callback; write only `[0, frames)`. Without a callback,
+output stays silent. Keep `user` alive until `stop()` returns, which quiesces the
+callback. Control methods cannot be called from the audio callback.

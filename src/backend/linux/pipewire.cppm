@@ -11,6 +11,7 @@ module;
 #include <string>
 #include <thread>
 #include <vector>
+#include "detail/pipewire_buffer.hpp"
 
 export module mka.audio.backend.pipewire;
 
@@ -127,6 +128,11 @@ namespace mka::audio::core {
         }
 
         spa_buffer *buf = b->buffer;
+        if (!buf || !buf->datas) {
+            if (enabled) self->notifyXRun();
+            pw_stream_queue_buffer(self->stream_, b);
+            return;
+        }
 
         // Arrêt en cours : on rend le buffer (silence en sortie), sans callback.
         if (!enabled) {
@@ -154,18 +160,18 @@ namespace mka::audio::core {
                 frames = UINT32_MAX;
                 for (std::uint32_t i = 0; i < self->channels_; ++i) {
                     const spa_data &d = buf->datas[i];
-                    if (!d.data || !d.chunk) {
+                    const auto planeFrames = detail::readableFloatFrames(d);
+                    if (!planeFrames) {
                         ok = false;
                         break;
                     }
 
-                    const std::uint32_t off = std::min(d.chunk->offset, d.maxsize);
-                    const std::uint32_t size = std::min(d.chunk->size, d.maxsize - off);
+                    const std::uint32_t off = d.chunk->offset;
 
                     self->inChannels_[i] = reinterpret_cast<const float *>(
                         static_cast<const std::byte *>(d.data) + off);
                     // Minimum sur les canaux : chaque plan est valide sur `frames` échantillons.
-                    frames = std::min<std::uint32_t>(frames, size / sizeof(float));
+                    frames = std::min(frames, *planeFrames);
                 }
             }
             if (!ok) {
@@ -189,7 +195,7 @@ namespace mka::audio::core {
                 frames = UINT32_MAX;
                 for (std::uint32_t i = 0; i < self->channels_; ++i) {
                     const spa_data &d = buf->datas[i];
-                    if (!d.data) {
+                    if (!detail::writableFloatPlane(d)) {
                         ok = false;
                         break;
                     }
@@ -198,7 +204,7 @@ namespace mka::audio::core {
                 }
                 // Quantum demandé par le graphe (0 = pas d'information).
                 if (ok && b->requested != 0) {
-                    frames = std::min<std::uint32_t>(frames, static_cast<std::uint32_t>(b->requested));
+                    frames = static_cast<std::uint32_t>(std::min<std::uint64_t>(frames, b->requested));
                 }
             }
             if (!ok) {
