@@ -248,3 +248,40 @@ TEST(Sprint02Status, ConcurrentReadersObserveMonotonicCountersAndFinalFailure) {
     ASSERT_TRUE(b.stop());
     ASSERT_TRUE(b.close());
 }
+
+TEST(Sprint02Shutdown, StopWakesIdleDispatcherWithoutWaitingForPollingDeadline) {
+    TransactionBackend b;
+    ASSERT_TRUE(b.setEventHandler(+[](void*, const Event&) noexcept {}));
+    ASSERT_TRUE(b.open(testEndpointConfig()));
+    const auto begin = std::chrono::steady_clock::now();
+    for (int i = 0; i < 100; ++i) { ASSERT_TRUE(b.start()); ASSERT_TRUE(b.stop()); }
+    EXPECT_LT(std::chrono::steady_clock::now() - begin, 5s);
+    ASSERT_TRUE(b.close());
+}
+
+TEST(Sprint02Shutdown, StopJoinsInFlightHandlerAndCancelsRemainingDelivery) {
+    struct Gate { std::atomic<bool> entered{false}, release{false}; std::atomic<int> failures{0}; } gate;
+    TransactionBackend b;
+    ASSERT_TRUE(b.setEventHandler(+[](void* user, const Event& e) noexcept {
+        auto& g = *static_cast<Gate*>(user);
+        if (e.type == EventType::Failed) { ++g.failures; return; }
+        g.entered = true;
+        while (!g.release.load()) std::this_thread::yield();
+    }, &gate));
+    ASSERT_TRUE(b.open(testEndpointConfig()));
+    ASSERT_TRUE(b.start());
+    b.failStream();
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (!gate.entered.load() && std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+    std::atomic<bool> stopped{false};
+    std::thread control([&] { stopped = b.stop().has_value(); });
+    std::this_thread::sleep_for(20ms);
+    const bool waitedForHandler = !stopped.load();
+    gate.release = true;
+    control.join();
+    EXPECT_TRUE(gate.entered.load());
+    EXPECT_TRUE(waitedForHandler);
+    EXPECT_TRUE(stopped.load());
+    EXPECT_EQ(gate.failures.load(), 0);
+    ASSERT_TRUE(b.close());
+}

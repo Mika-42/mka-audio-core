@@ -1234,3 +1234,8 @@ handler or audio callback is unsupported.
 `status()` reads independent lock-free atomics. Its fields are safe to read
 concurrently but are not a transactional snapshot of one instant; counters reset
 at each start, so monotonicity applies only within a run.
+
+Dispatcher shutdown requests cancellation and wakes its stop-token-aware wait
+immediately. It joins an in-flight handler before returning and cancels pending
+delivery. Handlers must finish promptly: a blocking user handler cannot have a
+hard shutdown deadline without abandoning live user data. No thread is detached.
