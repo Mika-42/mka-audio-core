@@ -487,3 +487,24 @@ Ces listes ne sont ni exhaustives ni une garantie de compatibilité de toutes le
 combinaisons. `supportedSampleRates`, `supportedFormats` et `supportedBufferSizes`
 sont des candidats du framework, pas une preuve de support matériel. `open()` doit
 revérifier le flux natif et peut refuser explicitement un candidat annoncé.
+
+## Modèle duplex par backend
+
+`Direction::Duplex` désigne **un seul ID d’endpoint**, avec des comptes entrée/sortie
+strictement positifs choisis indépendamment. Les deux sens partagent une seule
+configuration et un seul `AudioProcessContext` par cycle. Deux capacités optionnelles
+présentes ne prouvent pas à elles seules qu’une ouverture simultanée est possible.
+
+| Backend | Identité et contrat duplex actuel |
+| --- | --- |
+| ALSA | Un ID PCM (normalement `hw:X,Y`) ouvert en capture et lecture. Les deux configurations exactes et `snd_pcm_link` doivent réussir. Sinon `ConfigurationFailed` et fermeture des deux handles, sans repli non synchronisé. |
+| JACK | Un nom de client : ses ports de sortie alimentent l’entrée du framework et ses ports d’entrée reçoivent sa sortie. Les deux groupes doivent contenir assez de canaux. Un cycle serveur fournit un callback duplex. ID vide : ports client non connectés. |
+| PipeWire | Un nom de nœud source ou sink. Une demande Duplex valide retourne `ConfigurationFailed` avant création native. Input et Output sont supportés séparément. |
+| PulseAudio | Un nom de source ou sink. Une demande Duplex valide retourne `ConfigurationFailed` avant création native. ID vide : périphérique par défaut du sens demandé. |
+| Windows/macOS | Les fichiers de backend actuels sont des stubs de modules ; aucune implémentation duplex fonctionnelle n’est revendiquée. |
+
+ALSA ne combine pas des périphériques capture/lecture distincts ; JACK regroupe les
+deux sens sous un même client. Deux instances unidirectionnelles ne constituent pas
+un stream duplex synchronisé et ne garantissent ni horloge ni latence communes.
+La coordination d’endpoints indépendants et le duplex des backends serveur restent
+hors de ce contrat ; aucun graphe DSP n’est ajouté au Core.

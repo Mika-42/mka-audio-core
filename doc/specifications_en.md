@@ -487,3 +487,24 @@ combination works. `supportedSampleRates`, `supportedFormats` and
 `supportedBufferSizes` are framework candidates, not proof of device support.
 Never validate `open()` only against a cached discovery result: the native stream
 must still be checked and can explicitly reject an advertised candidate.
+
+## Duplex model by backend
+
+`Direction::Duplex` addresses **one endpoint ID** with positive, independently
+chosen input/output counts. Both directions share one configuration and one
+`AudioProcessContext` per cycle. Optional capabilities in both directions do not
+alone prove that a simultaneous opening is possible.
+
+| Backend | Endpoint ID and current duplex contract |
+| --- | --- |
+| ALSA | One PCM ID (normally `hw:X,Y`) opened for capture and playback. Both exact configurations and `snd_pcm_link` must succeed. A link failure returns `ConfigurationFailed` and closes both handles; no unsynchronized fallback. |
+| JACK | One client name whose output ports feed framework input and whose input ports receive framework output. Both port groups must have enough channels. One server cycle supplies one duplex callback. Empty ID creates unconnected client ports. |
+| PipeWire | One source or sink node name; a valid Duplex request returns `ConfigurationFailed` before native stream creation. Input and Output are supported separately. |
+| PulseAudio | One source or sink name; a valid Duplex request returns `ConfigurationFailed` before native stream creation. Empty ID selects the default device for the requested single direction. |
+| Windows/macOS | Current backend files are module stubs; no working duplex implementation is claimed. |
+
+ALSA does not combine unrelated capture/playback devices; JACK can expose both
+port groups under the same client ID. Two unidirectional backend instances do not
+constitute a synchronized duplex stream and provide no shared clock/latency
+guarantee. Coordinating unrelated endpoints or adding duplex server backends is
+outside this contract and does not add a DSP graph to Core Audio.

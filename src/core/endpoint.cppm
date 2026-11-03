@@ -42,6 +42,9 @@ export namespace mka::audio::core {
     // Les capacités de découverte ne remplacent jamais cette validation.
     struct EndpointConfig {
         std::string id;
+        // Duplex désigne UN endpoint et UN callback avec les deux sens.
+        // ALSA : PCM liés ; JACK : ports du même client. PipeWire/PulseAudio
+        // rejettent actuellement Duplex avec ConfigurationFailed.
         Direction direction;
 
         std::uint32_t inputChannels;
