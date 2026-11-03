@@ -76,3 +76,20 @@ jobs:
           path: |
             junit-*.xml
             build/linux/Testing/Temporary/LastTest.log
+
+  asan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-build
+      - run: cmake --preset asan
+      - run: cmake --build --preset asan --parallel 2
+      - run: ctest --preset asan --output-junit "${{ github.workspace }}/junit-asan.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: asan-test-results
+          path: |
+            junit-asan.xml
+            build/asan/Testing/Temporary/LastTest.log
