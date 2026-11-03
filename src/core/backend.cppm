@@ -16,6 +16,7 @@ module;
 #include <cstdint>
 #include <expected>
 #include <mutex>
+#include <limits>
 #include <stop_token>
 #include <thread>
 #include <utility>
@@ -105,6 +106,19 @@ export namespace mka::audio::core {
                 }
                 if (endpointCfg.sampleRate == 0) return std::unexpected{ErrorType::SampleRateNotSupported};
                 if (endpointCfg.bufferSize == 0) return std::unexpected{ErrorType::BufferSizeNotSupported};
+                // Guard native signed channel counts, pointer tables and transport
+                // byte lengths before invoking hooks or allocating scratch memory.
+                constexpr auto maxChannels = std::numeric_limits<int>::max();
+                for (const auto channels : {endpointCfg.inputChannels, endpointCfg.outputChannels}) {
+                    if (channels > static_cast<std::uint32_t>(maxChannels)
+                        || channels > std::numeric_limits<std::size_t>::max() / sizeof(float*))
+                        return std::unexpected{ErrorType::ChannelsNotSupported};
+                    if (channels == 0) continue;
+                    const auto maxSamples = std::numeric_limits<std::uint32_t>::max() / sizeof(float);
+                    if (endpointCfg.bufferSize > maxSamples / channels
+                        || endpointCfg.bufferSize > std::numeric_limits<std::size_t>::max() / sizeof(float) / channels)
+                        return std::unexpected{ErrorType::BufferSizeNotSupported};
+                }
 
                 return guarded([&] { return open_(endpointCfg); }).and_then([&]() -> Result {
                     state = State::Open;

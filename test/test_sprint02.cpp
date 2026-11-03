@@ -2,6 +2,7 @@
 #include <chrono>
 #include <expected>
 #include <memory>
+#include <limits>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -146,4 +147,22 @@ TEST(Sprint02Failure, StopThenCloseAfterFailurePreservesDiagnosticsAndReopens) {
         EXPECT_TRUE(b.status().failed);
         EXPECT_EQ(b.status().xruns, 1u);
     }
+}
+
+TEST(Sprint02Bounds, RejectsExtremeChannelsAndByteLengthsBeforeNativeAcquisition) {
+    TransactionBackend b;
+    auto cfg = testEndpointConfig();
+    cfg.outputChannels = std::numeric_limits<std::uint32_t>::max();
+    EXPECT_EQ(b.open(cfg).error(), ErrorType::ChannelsNotSupported);
+    cfg = testEndpointConfig();
+    cfg.bufferSize = std::numeric_limits<std::uint32_t>::max();
+    EXPECT_EQ(b.open(cfg).error(), ErrorType::BufferSizeNotSupported);
+    cfg.outputChannels = 1;
+    cfg.bufferSize = std::numeric_limits<std::uint32_t>::max() / sizeof(float) + 1;
+    EXPECT_EQ(b.open(cfg).error(), ErrorType::BufferSizeNotSupported);
+    EXPECT_EQ(b.openCalls, 0u);
+    EXPECT_FALSE(b.reserved);
+    cfg.bufferSize = 1;
+    ASSERT_TRUE(b.open(cfg));
+    ASSERT_TRUE(b.close());
 }
