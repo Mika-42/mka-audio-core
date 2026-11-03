@@ -5,6 +5,7 @@
 #include <limits>
 #include <stdexcept>
 #include <thread>
+#include <type_traits>
 #include <vector>
 #include <gtest/gtest.h>
 import mka.audio.backend.abstract;
@@ -324,3 +325,30 @@ TEST(Sprint02Events, AllControlReentryIsRejectedWhileConcurrentStopJoinsHandler)
     ASSERT_TRUE(b.setEventHandler(nullptr));
     ASSERT_TRUE(b.close());
 }
+
+TEST(Sprint02Realtime, RepeatedRunsResetUnknownAndAcceptYesOrNoFromNativeThread) {
+    TransactionBackend b;
+    EXPECT_EQ(b.status().realtime, RealtimeState::Unknown);
+    ASSERT_TRUE(b.open(testEndpointConfig()));
+    for (int i = 0; i < 50; ++i) {
+        ASSERT_TRUE(b.start());
+        EXPECT_EQ(b.status().realtime, RealtimeState::Unknown);
+        std::thread native([&] { b.reportRealtime(i % 2 == 0); });
+        native.join();
+        const auto expected = i % 2 == 0 ? RealtimeState::Yes : RealtimeState::No;
+        EXPECT_EQ(b.status().realtime, expected);
+        ASSERT_TRUE(b.stop());
+        EXPECT_EQ(b.status().realtime, expected);
+    }
+    ASSERT_TRUE(b.close());
+    ASSERT_TRUE(b.open(testEndpointConfig()));
+    b.failStart = 1;
+    EXPECT_FALSE(b.start());
+    EXPECT_EQ(b.status().realtime, RealtimeState::Unknown);
+    b.failStart = 0;
+    ASSERT_TRUE(b.start());
+    EXPECT_EQ(b.status().realtime, RealtimeState::Unknown);
+    ASSERT_TRUE(b.stop());
+    ASSERT_TRUE(b.close());
+}
+static_assert(std::is_same_v<std::underlying_type_t<RealtimeState>, std::uint8_t>);
