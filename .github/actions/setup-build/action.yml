@@ -1,5 +1,9 @@
 name: C++26 build tools
 description: Install Clang 19, libstdc++ 14, CMake 4 and Ninja.
+inputs:
+  native:
+    description: Install Linux audio SDKs and virtual server tools.
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -12,3 +16,10 @@ runs:
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends clang-19 clang-tools-19 llvm-19 g++-14
         python -m pip install 'cmake>=4.0,<5' ninja
+    - name: Install Linux audio SDKs and virtual servers
+      if: inputs.native == 'true'
+      shell: bash
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dbus-daemon libasound2-dev libjack-jackd2-dev libpipewire-0.3-dev libpulse-dev jackd2 pipewire-bin wireplumber pulseaudio pulseaudio-utils

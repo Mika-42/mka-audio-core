@@ -18,7 +18,9 @@
         "MKA_BUILD_ALSA": "OFF",
         "MKA_BUILD_JACK": "OFF",
         "MKA_BUILD_PIPEWIRE": "OFF",
-        "MKA_BUILD_PULSEAUDIO": "OFF"
+        "MKA_BUILD_PULSEAUDIO": "OFF",
+        "BUILD_GMOCK": "OFF",
+        "INSTALL_GTEST": "OFF"
       }
     }
   ],

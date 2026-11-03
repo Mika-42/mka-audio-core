@@ -2,6 +2,11 @@
 # Run a test command against private virtual servers.
 set -euo pipefail
 if [ "$#" = 0 ]; then echo "Usage: bash test/linux/run_virtual_tests.sh <test command> [args...]" >&2; exit 2; fi
+# WirePlumber versions that require a session bus must not depend on the host.
+if [ "${MKA_AUDIO_FIXTURE_DBUS:-0}" != 1 ]; then
+    if ! command -v dbus-run-session >/dev/null; then echo 'Missing test dependency: dbus-run-session' >&2; exit 1; fi
+    exec dbus-run-session -- env MKA_AUDIO_FIXTURE_DBUS=1 bash "$0" "$@"
+fi
 fixture_dir=$(cd -- "$(dirname -- "$0")/fixtures" && pwd)
 for program in pulseaudio pactl jackd pipewire pw-cli pw-cat wireplumber python3; do
     if ! command -v "$program" >/dev/null; then echo "Missing test dependency: $program" >&2; exit 1; fi
