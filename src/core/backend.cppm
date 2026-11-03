@@ -298,6 +298,7 @@ export namespace mka::audio::core {
 
             static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
             static_assert(std::atomic<bool>::is_always_lock_free);
+            static_assert(std::atomic<std::uint8_t>::is_always_lock_free);
 
             static constexpr std::chrono::milliseconds kDispatchPeriod{10};
 
