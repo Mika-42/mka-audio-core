@@ -1164,3 +1164,31 @@ combination works. `supportedSampleRates`, `supportedFormats` and
 `supportedBufferSizes` are framework candidates, not proof of device support.
 Never validate `open()` only against a cached discovery result: the native stream
 must still be checked and can explicitly reject an advertised candidate.
+
+## Result and error contract
+
+`Result` is exactly `std::expected<void, ErrorType>`. Success is `Result{}` and
+failure is `std::unexpected{ErrorType::...}`; there is no `None` enumerator.
+`open`, `start`, `stop`, `close`, `setProcessFunction` and `setEventHandler` return it.
+
+| ErrorType | Meaning |
+| --- | --- |
+| InvalidState | Operation forbidden in the current lifecycle state or from the event dispatcher. |
+| EndpointUnavailable | Endpoint/server absent, inaccessible or disconnected. |
+| FormatNotSupported | Unknown or unsupported requested stream format. |
+| ChannelsNotSupported | Inconsistent direction/counts or unsupported channel count. |
+| SampleRateNotSupported | Zero rate or requested stream rate not provided exactly. |
+| BufferSizeNotSupported | Zero size or unsupported backend transport parameter. |
+| ConfigurationFailed | Other native setup failure, unknown direction, or exception from a control hook. |
+
+Lifecycle guards run first. Common configuration validation runs before native
+resources are acquired. Do not rely on a backend-independent ordering of other
+errors when multiple fields are invalid. Hook errors are forwarded unchanged;
+hook exceptions become `ConfigurationFailed`, without advancing the lifecycle
+state. Native hooks must release any partially acquired resource on failure.
+
+Asynchronous xruns and stream loss use `Status::xruns` / `Status::failed` and
+`EventType::XRun` / `EventType::Failed`, not Result returns from a callback.
+After stream loss, the control thread calls `stop()` then `close()` before
+reopening. A realtime-priority refusal is a `RealtimeState::No` fallback, not an
+opening error. Discovery errors retain the existing empty-vector convention.

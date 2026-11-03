@@ -233,6 +233,7 @@ if (MKA_BUILD_TESTS)
             test/test_backend_robustness.cpp
             test/test_convert.cpp
             test/test_endpoint_contract.cpp
+            test/test_error_contract.cpp
     )
 
     target_link_libraries(mka-core-audio-tests
