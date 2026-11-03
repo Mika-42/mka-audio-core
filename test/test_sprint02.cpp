@@ -166,3 +166,33 @@ TEST(Sprint02Bounds, RejectsExtremeChannelsAndByteLengthsBeforeNativeAcquisition
     ASSERT_TRUE(b.open(cfg));
     ASSERT_TRUE(b.close());
 }
+
+namespace {
+class DiscoveryBackend : public TransactionBackend {
+public:
+    mutable std::atomic<int> active{0};
+    mutable std::atomic<bool> overlapped{false};
+private:
+    struct Scope {
+        const DiscoveryBackend& b;
+        explicit Scope(const DiscoveryBackend& value) : b(value) {
+            if (b.active.fetch_add(1) != 0) b.overlapped = true;
+            std::this_thread::sleep_for(50us);
+        }
+        ~Scope() { --b.active; }
+    };
+    std::vector<Endpoint> getEndPoints_() const override { Scope scope(*this); return {}; }
+    Result open_(const EndpointConfig& cfg) override { Scope scope(*this); return TransactionBackend::open_(cfg); }
+    Result close_() override { Scope scope(*this); return TransactionBackend::close_(); }
+};
+}
+TEST(Sprint02Discovery, DiscoveryAndNativeControlHooksNeverOverlap) {
+    DiscoveryBackend b;
+    std::thread scanner([&] { for (int i = 0; i < 200; ++i) (void)b.getEndPoints(); });
+    for (int i = 0; i < 100; ++i) {
+        ASSERT_TRUE(b.open(testEndpointConfig()));
+        ASSERT_TRUE(b.close());
+    }
+    scanner.join();
+    EXPECT_FALSE(b.overlapped.load());
+}

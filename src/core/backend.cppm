@@ -216,9 +216,12 @@ export namespace mka::audio::core {
             // Découverte HORS RT : peut allouer et contacter le serveur audio.
             // Renvoie un instantané par valeur, pas une réservation ni une preuve
             // d’ouvrabilité. Une liste vide peut indiquer absence ou échec de découverte.
-            // Ne dépend pas de l'état : pas de verrou. Une exception donne une liste vide.
+            // Sérialisée avec les contrôles ; une exception ou un appel depuis le
+            // dispatcher donne une liste vide (évite un cycle avec stop/join).
             [[nodiscard]] std::vector<Endpoint> getEndPoints() const noexcept {
+                if (calledFromDispatcher()) return {};
                 try {
+                    std::scoped_lock lock(controlMutex_);
                     return getEndPoints_();
                 } catch (...) {
                     return {};
@@ -291,7 +294,7 @@ export namespace mka::audio::core {
 
             static inline thread_local const Backend* dispatchingFor_ = nullptr;
 
-            std::mutex controlMutex_;
+            mutable std::mutex controlMutex_;
 
             static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
             static_assert(std::atomic<bool>::is_always_lock_free);
