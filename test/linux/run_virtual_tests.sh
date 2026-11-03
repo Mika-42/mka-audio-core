@@ -2,6 +2,11 @@
 # Run a test command against private virtual servers.
 set -euo pipefail
 if [ "$#" = 0 ]; then echo "Usage: bash test/linux/run_virtual_tests.sh <test command> [args...]" >&2; exit 2; fi
+# WirePlumber versions that require a session bus must not depend on the host.
+if [ "${MKA_AUDIO_FIXTURE_DBUS:-0}" != 1 ]; then
+    if ! command -v dbus-run-session >/dev/null; then echo 'Missing test dependency: dbus-run-session' >&2; exit 1; fi
+    exec dbus-run-session -- env MKA_AUDIO_FIXTURE_DBUS=1 bash "$0" "$@"
+fi
 fixture_dir=$(cd -- "$(dirname -- "$0")/fixtures" && pwd)
 for program in pulseaudio pactl jackd pipewire pw-cli pw-cat wireplumber python3; do
     if ! command -v "$program" >/dev/null; then echo "Missing test dependency: $program" >&2; exit 1; fi
@@ -24,7 +29,13 @@ pids=()
 cleanup() {
     if [ "${#pids[@]}" -gt 0 ]; then kill "${pids[@]}" 2>/dev/null || true; fi
     wait || true
-    if [ "${MKA_KEEP_TEST_LOGS:-0}" = 1 ]; then echo "Audio fixture logs: $run_dir" >&2; else rm -rf -- "$run_dir"; fi
+    if [ "${MKA_KEEP_TEST_LOGS:-0}" = 1 ]; then
+        echo "Audio fixture logs: $run_dir" >&2
+        for log in "$run_dir"/*.log; do
+            echo "--- $log" >&2
+            tail -80 "$log" >&2
+        done
+    else rm -rf -- "$run_dir"; fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -50,8 +61,11 @@ for i in $(seq 1 100); do
     sleep 0.1
 done
 if [ "$ready" != 1 ]; then export MKA_KEEP_TEST_LOGS=1; echo 'Virtual audio servers did not become ready.' >&2; exit 1; fi
-# Read stdin as raw data: a /dev/zero filename can be treated as a zero-length file.
-pw-cat --playback --raw --rate 48000 --channels 2 --format f32 --target 0 --properties '{ media.class = Audio/Source node.name = mka_test_source node.virtual = true node.always-process = true }' - < /dev/zero > "$run_dir/source.log" 2>&1 &
+# PipeWire 1.0 treats stdin as raw; newer versions need an explicit --raw.
+raw_args=()
+if [[ $(pw-cat --help 2>&1) == *--raw* ]]; then raw_args=(--raw); fi
+# A /dev/zero filename can be treated as a zero-length file.
+pw-cat --playback "${raw_args[@]}" --rate 48000 --channels 2 --format f32 --target 0 --properties '{ media.class = Audio/Source node.name = mka_test_source node.virtual = true node.always-process = true }' - < /dev/zero > "$run_dir/source.log" 2>&1 &
 pids+=($!)
 source_ready=0
 for i in $(seq 1 50); do

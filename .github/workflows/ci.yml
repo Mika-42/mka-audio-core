@@ -32,3 +32,47 @@ jobs:
           path: |
             junit-core.xml
             build/core/Testing/Temporary/LastTest.log
+
+  options:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: matrix
+        run: python3 ci/linux_matrix.py --github-output >> "$GITHUB_OUTPUT"
+  linux-options:
+    needs: options
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.options.outputs.matrix) }}
+    env:
+      MKA_ALSA: ${{ matrix.alsa }}
+      MKA_JACK: ${{ matrix.jack }}
+      MKA_PIPEWIRE: ${{ matrix.pipewire }}
+      MKA_PULSEAUDIO: ${{ matrix.pulseaudio }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-build
+        with:
+          native: 'true'
+      - name: Configure backend switches
+        run: >-
+          cmake --preset core -B build/linux
+          -DMKA_BUILD_ALSA="$MKA_ALSA" -DMKA_BUILD_JACK="$MKA_JACK"
+          -DMKA_BUILD_PIPEWIRE="$MKA_PIPEWIRE" -DMKA_BUILD_PULSEAUDIO="$MKA_PULSEAUDIO"
+      - run: cmake --build build/linux --parallel 2
+      - name: Unit tests
+        run: ctest --test-dir build/linux -L unit --no-tests=error --output-on-failure --output-junit "${{ github.workspace }}/junit-unit.xml"
+      - name: Native tests on private virtual servers
+        if: matrix.native
+        run: bash test/linux/run_virtual_tests.sh ctest --test-dir build/linux -L integration -LE hardware --no-tests=error --output-on-failure --output-junit "${{ github.workspace }}/junit-native.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-${{ matrix.name }}
+          path: |
+            junit-*.xml
+            build/linux/Testing/Temporary/LastTest.log

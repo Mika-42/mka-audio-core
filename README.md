@@ -1322,3 +1322,12 @@ ctest --preset core
 The preset disables all native backends. A library-only build with
 `MKA_BUILD_TESTS=OFF` does not fetch or configure GoogleTest. CI uploads CTest's
 JUnit results and logs even when the test step fails.
+
+CI's Linux option matrix enumerates all 16 combinations of
+`MKA_BUILD_ALSA`, `MKA_BUILD_JACK`, `MKA_BUILD_PIPEWIRE` and
+`MKA_BUILD_PULSEAUDIO`; `python3 ci/linux_matrix.py` prints the same matrix for
+local tooling. Each job compiles its enabled targets and runs unit tests. Jobs
+with native backends also execute integration tests on the private virtual
+servers, with physical hardware cases excluded. The harness owns its D-Bus
+session as well as the audio servers, so it supports WirePlumber versions that
+require a session bus without borrowing the host session.
