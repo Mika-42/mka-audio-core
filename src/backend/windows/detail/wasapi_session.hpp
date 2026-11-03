@@ -50,6 +50,26 @@ public:
             // Commit only after the complete acquisition succeeds. Partial COM
             // resources are released here, on the owner, before returning error.
             Request pending = request;
+            WAVEFORMATEX* rawMix = nullptr;
+            const auto mixResult = client->GetMixFormat(&rawMix);
+            TaskPtr<WAVEFORMATEX> mix(rawMix);
+            if (FAILED(mixResult)) return mixResult;
+            if (!mix || !validWaveFormat(*mix)) return AUDCLNT_E_UNSUPPORTED_FORMAT;
+            DWORD mask = 0;
+            if (mix->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+                if (mix->nChannels == request.channels)
+                    mask = reinterpret_cast<const WAVEFORMATEXTENSIBLE&>(*mix).dwChannelMask;
+                if (pending.kind == SampleKind::S24Packed && sampleKind(*mix) == SampleKind::S24In32)
+                    pending.kind = SampleKind::S24In32;
+            }
+            const auto format = makeWaveFormat(pending.kind, pending.channels, pending.rate, mask);
+            if (!format) return AUDCLNT_E_UNSUPPORTED_FORMAT;
+            WAVEFORMATEX* rawClosest = nullptr;
+            const auto support = client->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED, &format->Format, &rawClosest);
+            TaskPtr<WAVEFORMATEX> closest(rawClosest);
+            // S_FALSE offers a replacement format, not the exact requested one.
+            if (support != S_OK) return FAILED(support) ? support : AUDCLNT_E_UNSUPPORTED_FORMAT;
+            format_ = *format;
             request_ = std::move(pending);
             device_ = std::move(device); client_ = std::move(client);
             return S_OK;
@@ -58,14 +78,16 @@ public:
     HRESULT close() {
         if (FAILED(control_.initialization())) return control_.initialization();
         return control_.invoke([&]() -> HRESULT {
-            client_.Reset(); device_.Reset(); request_ = {};
+            client_.Reset(); device_.Reset(); request_ = {}; format_ = {};
             return S_OK;
         });
     }
+    const WAVEFORMATEXTENSIBLE& nativeFormat() const noexcept { return format_; }
 private:
     ControlThread& control_;
     ComPtr<IMMDevice> device_;
     ComPtr<IAudioClient> client_;
     Request request_;
+    WAVEFORMATEXTENSIBLE format_{};
 };
 }

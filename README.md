@@ -1428,3 +1428,9 @@ COM owner; failed lookups or activation leave the backend closed and reusable.
 Capture and render use separate instances; a duplex request is rejected. Control
 commands use a synchronous stack-resident slot, so native teardown does not need
 to allocate another work item.
+
+WASAPI shared-mode format negotiation accepts only `IsFormatSupported == S_OK`.
+A closest match (`S_FALSE`) is freed and rejected; rate, channels and portable
+format are never silently substituted. WAVEFORMATEXTENSIBLE sizes, byte-rate
+arithmetic and speaker masks are checked. Int24 retains a low-aligned 24-in-32
+container when the native mix uses it; otherwise the request uses packed 24-bit.
