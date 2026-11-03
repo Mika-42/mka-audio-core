@@ -22,6 +22,8 @@ public:
     std::jthread worker;
     bool reserved = false;
     unsigned openCalls = 0;
+    void failStream() noexcept { notifyXRun(); notifyFailed(); }
+    void reportRealtime(bool yes) noexcept { notifyRealtime(yes); }
 protected:
     std::vector<Endpoint> getEndPoints_() const override { return {}; }
     Result open_(const EndpointConfig&) override {
@@ -123,5 +125,25 @@ TEST(Sprint02Stop, FailureRetainsRunningAndResourcesUntilSuccessfulRetry) {
         ASSERT_TRUE(b.start());
         ASSERT_TRUE(b.stop());
         ASSERT_TRUE(b.close());
+    }
+}
+
+TEST(Sprint02Failure, StopThenCloseAfterFailurePreservesDiagnosticsAndReopens) {
+    TransactionBackend b;
+    for (int cycle = 0; cycle < 20; ++cycle) {
+        ASSERT_TRUE(b.open(testEndpointConfig()));
+        ASSERT_TRUE(b.start());
+        EXPECT_FALSE(b.status().failed);
+        EXPECT_EQ(b.status().xruns, 0u);
+        std::thread native([&] { b.failStream(); });
+        native.join();
+        EXPECT_TRUE(b.status().failed);
+        EXPECT_EQ(b.close().error(), ErrorType::InvalidState);
+        ASSERT_TRUE(b.stop());
+        EXPECT_EQ(b.liveWorkers.load(), 0);
+        ASSERT_TRUE(b.close());
+        EXPECT_FALSE(b.reserved);
+        EXPECT_TRUE(b.status().failed);
+        EXPECT_EQ(b.status().xruns, 1u);
     }
 }
