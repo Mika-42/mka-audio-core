@@ -220,3 +220,31 @@ TEST(Sprint02Destruction, RunningDestructionJoinsAudioAndDispatcherBeforeReturni
         EXPECT_EQ(events.load(), count);
     }
 }
+
+TEST(Sprint02Status, ConcurrentReadersObserveMonotonicCountersAndFinalFailure) {
+    TransactionBackend b;
+    ASSERT_TRUE(b.open(testEndpointConfig()));
+    ASSERT_TRUE(b.start());
+    std::atomic<bool> done{false}, invalid{false};
+    std::vector<std::thread> readers;
+    for (int i = 0; i < 4; ++i) readers.emplace_back([&] {
+        std::uint64_t previous = 0;
+        while (!done.load(std::memory_order_acquire)) {
+            const auto s = b.status();
+            if (s.xruns < previous || s.xruns > 100000) invalid = true;
+            if (s.realtime != RealtimeState::Unknown && s.realtime != RealtimeState::Yes && s.realtime != RealtimeState::No) invalid = true;
+            previous = s.xruns;
+        }
+    });
+    std::thread native([&] {
+        for (int i = 0; i < 100000; ++i) { b.failStream(); b.reportRealtime(i % 2); }
+    });
+    native.join();
+    done.store(true, std::memory_order_release);
+    for (auto& reader : readers) reader.join();
+    EXPECT_FALSE(invalid.load());
+    EXPECT_EQ(b.status().xruns, 100000u);
+    EXPECT_TRUE(b.status().failed);
+    ASSERT_TRUE(b.stop());
+    ASSERT_TRUE(b.close());
+}

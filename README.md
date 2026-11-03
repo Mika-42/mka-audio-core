@@ -1230,3 +1230,7 @@ handlers while derived resources are alive, then stop/join native audio and
 release buffers. The base destructor cannot perform virtual native cleanup.
 Handler and process user data must outlive this shutdown; destruction from a
 handler or audio callback is unsupported.
+
+`status()` reads independent lock-free atomics. Its fields are safe to read
+concurrently but are not a transactional snapshot of one instant; counters reset
+at each start, so monotonicity applies only within a run.
