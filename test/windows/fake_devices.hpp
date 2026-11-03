@@ -88,7 +88,7 @@ inline ComApi api() { return {&CoInitializeEx,&CoUninitialize,create}; }
 class DevicesFixture : public testing::Test {
 protected:
     void SetUp() override { createResult=S_OK;activeEnumerator=Make<FakeEnumerator>(); }
-    void TearDown() override { activeEnumerator.Reset();EXPECT_EQ(liveObjects.load(),0);EXPECT_EQ(liveClients.load(),0); }
+    void TearDown() override { activeEnumerator.Reset();EXPECT_EQ(liveObjects.load(),0);EXPECT_EQ(liveClients.load(),0);EXPECT_EQ(liveServices.load(),0); }
     ComPtr<FakeDevice> add(std::wstring id, EDataFlow flow) {
         auto device=Make<FakeDevice>();device->id=std::move(id);device->flow=flow;
         activeEnumerator->collection->devices.push_back(device);return device;

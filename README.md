@@ -1440,3 +1440,9 @@ zero periodicity and the requested frame count converted to a rounded-up
 REFERENCE_TIME duration. Native buffer capacity is read back and bounded before
 use. `bufferSize` requests latency; it is not a fixed DSP callback size. Failed
 initialization or malformed capacity releases the pending client and allows retry.
+
+A shared render stream registers its own auto-reset audio event and acquires
+IAudioRenderClient before open succeeds. Event creation, registration and service
+failures release the pending handles/interfaces. Open does not acquire audio
+buffers or call the process function; the native client is released before its
+event handle is closed.

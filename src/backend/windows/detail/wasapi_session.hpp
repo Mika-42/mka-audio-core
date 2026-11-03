@@ -1,5 +1,6 @@
 #pragma once
 #include "wasapi_devices.hpp"
+#include "wasapi_event.hpp"
 namespace mka_wasapi_detail {
 struct Request {
     std::string id;
@@ -9,7 +10,7 @@ struct Request {
 };
 class Session {
 public:
-    explicit Session(ControlThread& control) : control_(control) {}
+    explicit Session(ControlThread& control, EventApi events = {}) : control_(control), events_(events) {}
     ~Session() {
         if (SUCCEEDED(control_.initialization())) {
             try { close(); } catch (...) {}
@@ -22,6 +23,7 @@ public:
             if ((request.flow != eRender && request.flow != eCapture)
                 || !request.channels || request.channels > std::numeric_limits<WORD>::max()
                 || !request.rate || !request.frames) return E_INVALIDARG;
+            UniqueEvent pendingEvent; // declared before COM clients: released after them on rollback
             ComPtr<IMMDeviceEnumerator> enumerator;
             HRESULT result = createEnumerator(control_.api(), enumerator.GetAddressOf());
             if (FAILED(result)) return result;
@@ -77,6 +79,17 @@ public:
             UINT32 capacity = 0;
             if (FAILED(result = client->GetBufferSize(&capacity))) return result;
             if (!validCapacity(capacity,pending.channels)) return AUDCLNT_E_BUFFER_SIZE_ERROR;
+            pendingEvent = UniqueEvent(events_.create(nullptr,FALSE,FALSE,nullptr),events_.close);
+            if (!pendingEvent.get()) return lastEventError();
+            if (FAILED(result = client->SetEventHandle(pendingEvent.get()))) return result;
+            ComPtr<IAudioRenderClient> render;
+            if (pending.flow == eRender) {
+                if (FAILED(result = client->GetService(__uuidof(IAudioRenderClient),
+                    reinterpret_cast<void**>(render.GetAddressOf())))) return result;
+                if (!render) return E_POINTER;
+            }
+            render_ = std::move(render);
+            audioEvent_ = std::move(pendingEvent);
             capacity_ = capacity;
             format_ = *format;
             request_ = std::move(pending);
@@ -87,16 +100,21 @@ public:
     HRESULT close() {
         if (FAILED(control_.initialization())) return control_.initialization();
         return control_.invoke([&]() -> HRESULT {
-            client_.Reset(); device_.Reset(); request_ = {}; format_ = {}; capacity_ = 0;
+            render_.Reset(); client_.Reset(); device_.Reset(); audioEvent_.reset();
+            request_ = {}; format_ = {}; capacity_ = 0;
             return S_OK;
         });
     }
+    HANDLE audioEvent() const noexcept { return audioEvent_.get(); }
     std::uint32_t capacity() const noexcept { return capacity_; }
     const WAVEFORMATEXTENSIBLE& nativeFormat() const noexcept { return format_; }
 private:
     ControlThread& control_;
+    EventApi events_;
+    UniqueEvent audioEvent_;
     ComPtr<IMMDevice> device_;
     ComPtr<IAudioClient> client_;
+    ComPtr<IAudioRenderClient> render_;
     Request request_;
     WAVEFORMATEXTENSIBLE format_{};
     std::uint32_t capacity_ = 0;
