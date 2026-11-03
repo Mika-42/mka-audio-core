@@ -17,6 +17,7 @@ class TransactionBackend : public Backend {
 public:
     int failOpen = 0;
     int failStart = 0;
+    int failStop = 0;
     std::atomic<int> liveWorkers{0};
     std::jthread worker;
     bool reserved = false;
@@ -47,7 +48,10 @@ protected:
         worker = std::move(pending);
         return {};
     }
-    Result stop_() override { worker.request_stop(); if (worker.joinable()) worker.join(); return {}; }
+    Result stop_() override {
+        if (failStop == 1) return std::unexpected{ErrorType::EndpointUnavailable};
+        if (failStop == 2) throw std::runtime_error("native stop");
+        worker.request_stop(); if (worker.joinable()) worker.join(); return {}; }
     Result close_() override { reserved = false; return {}; }
 };
 
@@ -94,6 +98,30 @@ TEST(Sprint02Start, FailureJoinsPartialWorkerAndCanRetryOrClose) {
         ASSERT_TRUE(b.start());
         ASSERT_TRUE(b.stop());
         EXPECT_EQ(b.liveWorkers.load(), 0);
+        ASSERT_TRUE(b.close());
+    }
+}
+
+TEST(Sprint02Stop, FailureRetainsRunningAndResourcesUntilSuccessfulRetry) {
+    for (int failure : {1, 2}) {
+        TransactionBackend b;
+        ASSERT_TRUE(b.open(testEndpointConfig()));
+        ASSERT_TRUE(b.start());
+        b.failStop = failure;
+        const auto result = b.stop();
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error(), failure == 1 ? ErrorType::EndpointUnavailable : ErrorType::ConfigurationFailed);
+        EXPECT_TRUE(b.reserved);
+        EXPECT_EQ(b.close().error(), ErrorType::InvalidState);
+        EXPECT_EQ(b.start().error(), ErrorType::InvalidState);
+        EXPECT_EQ(b.setProcessFunction(nullptr).error(), ErrorType::InvalidState);
+        b.failStop = 0;
+        ASSERT_TRUE(b.stop());
+        EXPECT_EQ(b.liveWorkers.load(), 0);
+        ASSERT_TRUE(b.close());
+        ASSERT_TRUE(b.open(testEndpointConfig()));
+        ASSERT_TRUE(b.start());
+        ASSERT_TRUE(b.stop());
         ASSERT_TRUE(b.close());
     }
 }
