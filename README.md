@@ -1345,3 +1345,10 @@ suite, including concurrent state changes and event dispatch; `rt` tests and
 allocator interposition are excluded. Native audio SDKs are not instrumented by
 this job, so its result does not establish race freedom inside those libraries.
 Sanitizer modes are mutually exclusive; findings fail the CTest/CI step.
+
+`ctest -L stress` exercises 1,000 complete core open/start/stop/close cycles on
+the same backend instance, with real worker and event-dispatch threads. Every
+cycle verifies callback progress, invalid transitions, joined workers and zero
+live resources, then frees both user contexts before reopening. The stress cases
+also run in the core ASan/UBSan and TSan presets; they are a core lifecycle test,
+not a substitute for native-device endurance testing.
