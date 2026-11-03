@@ -1218,3 +1218,8 @@ Before native acquisition, channel counts must fit a native signed `int` and a
 `size_t` pointer table. Each direction's requested Float32 buffer byte length
 must fit both `uint32_t` (native transport lengths) and `size_t`; multiplication
 is checked by division before allocation. Native device limits still apply.
+
+Discovery and lifecycle hooks on one backend are serialized on the control
+mutex; audio callbacks and `status()` never acquire it. Call discovery from a
+control thread. Discovery from the event dispatcher returns an empty snapshot,
+just as failed discovery does; handlers should post requests to the control thread.
