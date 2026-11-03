@@ -125,3 +125,22 @@ TEST_F(PulseBufferContract, ZeroWriteCapacityAndReadHolesReturnWithoutSpinning) 
     }
     ASSERT_TRUE(input.stop()); ASSERT_TRUE(input.close());
 }
+
+TEST_F(PulseBufferContract, NullCallbackWritesNativeSilence) {
+    for (const bool previousCallback : {false,true}) {
+        PulseAudio b;
+        if (previousCallback) ASSERT_TRUE(b.setProcessFunction(process));
+        ASSERT_TRUE(b.open(config())); ASSERT_TRUE(b.start());
+        if (previousCallback) {
+            { Injection injected; writeCallback(playback,8*3,writeUser); EXPECT_GT(data.calls,0u); }
+            ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.setProcessFunction(nullptr)); ASSERT_TRUE(b.start());
+        }
+        {
+            Injection injected; writeCallback(playback,32*2*sizeof(float),writeUser);
+            EXPECT_EQ(data.bytesWritten,32*2*sizeof(float)); EXPECT_EQ(data.calls,0u);
+            for (unsigned i = 0; i < 64; ++i) EXPECT_EQ(data.memory[1+i],0.0f);
+            EXPECT_EQ(data.memory[0],999.0f); EXPECT_EQ(data.memory[65],999.0f);
+        }
+        ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
+    }
+}

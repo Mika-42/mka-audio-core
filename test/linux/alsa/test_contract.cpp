@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <chrono>
+#include <cstring>
 #include <thread>
 #include <expected>
 #include <gtest/gtest.h>
@@ -22,6 +23,9 @@ unsigned unlinkCalls = 0;
 std::atomic<int> injectAvail{0};
 std::atomic<bool> persistentXrun{false}, zeroChunk{false}, shortCommit{false};
 std::atomic<unsigned> resumes{0};
+std::atomic<bool> inspectSilence{false}, audible{false};
+std::atomic<unsigned> silentCommits{0};
+thread_local const snd_pcm_channel_area_t* mappedAreas = nullptr;
 template<class P> bool waitFor(P p) {
     const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     while (!p() && std::chrono::steady_clock::now() < end) std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -213,10 +217,25 @@ int __real_snd_pcm_mmap_begin(snd_pcm_t*, const snd_pcm_channel_area_t**, snd_pc
 int __wrap_snd_pcm_mmap_begin(snd_pcm_t* p, const snd_pcm_channel_area_t** a, snd_pcm_uframes_t* o, snd_pcm_uframes_t* n) {
     const int r = __real_snd_pcm_mmap_begin(p,a,o,n);
     if (r >= 0 && zeroChunk.exchange(false)) *n = 0;
+    mappedAreas = r >= 0 ? *a : nullptr;
+    if (inspectSilence && mappedAreas) {
+        const float dirty = 0.25f;
+        for (unsigned ch = 0; ch < 2; ++ch) for (snd_pcm_uframes_t i = 0; i < *n; ++i) {
+            auto* dst = static_cast<std::byte*>(mappedAreas[ch].addr)+mappedAreas[ch].first/8+(*o+i)*(mappedAreas[ch].step/8);
+            std::memcpy(dst,&dirty,sizeof(dirty));
+        }
+    }
     return r;
 }
 snd_pcm_sframes_t __real_snd_pcm_mmap_commit(snd_pcm_t*, snd_pcm_uframes_t, snd_pcm_uframes_t);
 snd_pcm_sframes_t __wrap_snd_pcm_mmap_commit(snd_pcm_t* p, snd_pcm_uframes_t o, snd_pcm_uframes_t n) {
+    if (inspectSilence && mappedAreas) {
+        for (unsigned ch = 0; ch < 2; ++ch) for (snd_pcm_uframes_t i = 0; i < n; ++i) {
+            const auto* src = static_cast<const std::byte*>(mappedAreas[ch].addr)+mappedAreas[ch].first/8+(o+i)*(mappedAreas[ch].step/8);
+            float value; std::memcpy(&value,src,sizeof(value)); if (value != 0.0f) audible = true;
+        }
+        ++silentCommits;
+    }
     const auto r = __real_snd_pcm_mmap_commit(p,o,n);
     if (r > 0 && shortCommit.exchange(false)) return r-1;
     return r;
@@ -252,4 +271,13 @@ TEST_F(AlsaNativeContract, DisconnectionAndRepeatedRecoveryFailuresTerminateAndA
         EXPECT_FALSE(b.status().failed); EXPECT_EQ(b.status().xruns, 0u);
         ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
     }
+}
+
+TEST_F(AlsaNativeContract, NullCallbackWritesNativeSilence) {
+    ALSA b; ASSERT_TRUE(b.open(config())); ASSERT_TRUE(b.start());
+    audible = false; silentCommits = 0; inspectSilence = true;
+    EXPECT_TRUE(waitFor([&] { return silentCommits.load() > 10; }));
+    inspectSilence = false;
+    ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
+    EXPECT_FALSE(audible.load());
 }

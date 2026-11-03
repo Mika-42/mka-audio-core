@@ -14,7 +14,7 @@ import mka.audio.backend.abstract;
 import mka.audio.backend.pipewire;
 namespace {
 using namespace mka::audio::core;
-enum class Fault { None, Format, Rate, Channels, Malformed, SmallQuantum, HugeQuantum, TerminalError };
+enum class Fault { None, Format, Rate, Channels, Malformed, SmallQuantum, HugeQuantum, TerminalError, InspectSilence };
 std::atomic<Fault> fault{Fault::None};
 std::atomic<int> liveStreams{0};
 std::string requestedLatency;
@@ -118,6 +118,12 @@ extern "C" {
 pw_buffer* __real_pw_stream_dequeue_buffer(pw_stream*);
 pw_buffer* __wrap_pw_stream_dequeue_buffer(pw_stream* stream) {
     auto* b = __real_pw_stream_dequeue_buffer(stream);
+    if (b && fault == Fault::InspectSilence) {
+        for (std::uint32_t i = 0; i < b->buffer->n_datas; ++i) {
+            auto& d = b->buffer->datas[i];
+            if (d.data) std::fill_n(static_cast<float*>(d.data),d.maxsize/sizeof(float),0.25f);
+        }
+    }
     if (!b || (fault != Fault::SmallQuantum && fault != Fault::HugeQuantum)) return b;
     std::uint32_t capacity = UINT32_MAX;
     for (std::uint32_t i = 0; i < b->buffer->n_datas; ++i) {
@@ -137,6 +143,14 @@ int __wrap_pw_stream_queue_buffer(pw_stream* stream,pw_buffer* b) {
             if (!d.chunk || d.chunk->offset != 0 || d.chunk->stride != sizeof(float)
                 || d.chunk->size != expectedFrames.load()*sizeof(float)
                 || d.chunk->size > d.maxsize || d.chunk->flags != 0) badChunk = true;
+        }
+        ++checkedChunks;
+    }
+    if (fault == Fault::InspectSilence && b->buffer->n_datas && b->buffer->datas[0].chunk && b->buffer->datas[0].chunk->size > 0) {
+        for (std::uint32_t i = 0; i < b->buffer->n_datas; ++i) {
+            const auto& d = b->buffer->datas[i];
+            const auto* samples = static_cast<const float*>(d.data);
+            for (std::uint32_t n = 0; n < d.chunk->size/sizeof(float); ++n) if (samples[n] != 0.0f) badChunk = true;
         }
         ++checkedChunks;
     }
@@ -204,4 +218,13 @@ TEST_F(PipeWireNativeContract, TerminalNativeStateDisablesPendingProcessCallback
     ASSERT_TRUE(b.open(cfg)); ASSERT_TRUE(b.start());
     EXPECT_FALSE(b.status().failed);
     ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
+}
+
+TEST_F(PipeWireNativeContract, NullCallbackQueuesNativeSilence) {
+    PipeWire b; ASSERT_TRUE(b.open(cfg));
+    checkedChunks = 0; badChunk = false; fault = Fault::InspectSilence;
+    ASSERT_TRUE(b.start());
+    EXPECT_TRUE(waitFor([&] { return checkedChunks.load() > 10; }));
+    ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
+    EXPECT_FALSE(badChunk.load()); fault = Fault::None;
 }
