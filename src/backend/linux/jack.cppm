@@ -231,6 +231,17 @@ namespace mka::audio::core {
         if (jack_activate(client_) != 0)
             return std::unexpected{ ErrorType::ConfigurationFailed };
 
+        // Activation can race a server reconfiguration. Recheck after joining
+        // the graph, and quiesce the client before returning a start failure.
+        if (jack_get_sample_rate(client_) != requestedRate_) {
+            jack_deactivate(client_);
+            return std::unexpected{ErrorType::SampleRateNotSupported};
+        }
+        if (jack_get_buffer_size(client_) != requestedBuffer_) {
+            jack_deactivate(client_);
+            return std::unexpected{ErrorType::BufferSizeNotSupported};
+        }
+
         notifyRealtime(jack_is_realtime(client_) != 0);
 
         // jack_deactivate (stop_) retire les connexions : on les refait ici.
