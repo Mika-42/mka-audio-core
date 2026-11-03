@@ -364,25 +364,32 @@ Ces détails doivent rester isolés du reste de l’application.
 
 ## 13. Gestion des erreurs
 
-Les erreurs doivent être explicites et déterministes.
 
-Exemples :
+`Result` est exactement `std::expected<void, ErrorType>`. Le succès vaut `Result{}`,
+l’échec `std::unexpected{ErrorType::...}`. Il n’existe pas de valeur `None`.
+`open`, `start`, `stop`, `close`, `setProcessFunction` et `setEventHandler` retournent ce type.
 
-```cpp
-None
-InvalidArgument
-NotFound
-AlreadyExists
-UnsupportedConfiguration
-DeviceOpenFailed
-HardwareSetupFailed
-PollSetupFailed
-PollDescriptorsFailed
-WouldBlock
-XRun
-```
+| ErrorType | Signification |
+| --- | --- |
+| InvalidState | Opération interdite dans l’état courant ou depuis le dispatcher d’événements. |
+| EndpointUnavailable | Endpoint/serveur absent, inaccessible ou déconnecté. |
+| FormatNotSupported | Format inconnu ou non fourni. |
+| ChannelsNotSupported | Comptes incohérents avec la direction ou non fournis. |
+| SampleRateNotSupported | Fréquence nulle ou non fournie exactement au flux applicatif. |
+| BufferSizeNotSupported | Taille nulle ou paramètre de transport non fourni. |
+| ConfigurationFailed | Autre échec natif, direction inconnue ou exception d’un hook de contrôle. |
 
-En particulier, une configuration de stream non supportée doit produire une erreur explicite plutôt qu’une modification automatique de la configuration demandée.
+L’état est vérifié d’abord, puis les paramètres communs avant toute acquisition
+native. Ne pas supposer un ordre universel des autres erreurs si plusieurs champs
+sont invalides. Les erreurs des hooks sont transmises intactes ; leurs exceptions
+deviennent `ConfigurationFailed`, sans avancer l’état. Le hook doit libérer ses
+ressources partielles après un échec.
+
+Les xruns et pertes de flux asynchrones utilisent `Status::xruns` / `Status::failed`
+et `EventType::XRun` / `EventType::Failed`, jamais un retour Result du callback.
+Après perte de flux, le thread de contrôle appelle `stop()` puis `close()` avant
+de rouvrir. Un refus de priorité RT entraîne `RealtimeState::No`, sans échec
+d’ouverture. La découverte conserve sa convention de liste vide en cas d’échec.
 
 ## 14. Critères d’acceptation
 
