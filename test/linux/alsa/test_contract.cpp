@@ -3,6 +3,8 @@
 #include <atomic>
 #include <cerrno>
 #include <cstdint>
+#include <chrono>
+#include <thread>
 #include <expected>
 #include <gtest/gtest.h>
 import mka.audio.backend.alsa;
@@ -17,10 +19,18 @@ int requestedDirection = 1;
 bool emulateLinkedDevice = false;
 unsigned captureChannels = 0, playbackChannels = 0;
 unsigned unlinkCalls = 0;
+std::atomic<int> injectAvail{0};
+std::atomic<bool> persistentXrun{false}, zeroChunk{false}, shortCommit{false};
+std::atomic<unsigned> resumes{0};
+template<class P> bool waitFor(P p) {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (!p() && std::chrono::steady_clock::now() < end) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    return p();
+}
 EndpointConfig config() { return {"null", Direction::Output, 0, 2, 48000, Format::Float32, 256}; }
 class AlsaNativeContract : public ::testing::Test {
 protected:
-    void SetUp() override { fault = Fault::None; emulateLinkedDevice = false; captureChannels = playbackChannels = unlinkCalls = 0; EXPECT_EQ(liveHandles.load(), 0); }
+    void SetUp() override { injectAvail = 0; persistentXrun = zeroChunk = shortCommit = false; resumes = 0; fault = Fault::None; emulateLinkedDevice = false; captureChannels = playbackChannels = unlinkCalls = 0; EXPECT_EQ(liveHandles.load(), 0); }
     void TearDown() override { fault = Fault::None; EXPECT_EQ(liveHandles.load(), 0); }
 };
 }
@@ -187,5 +197,59 @@ TEST_F(AlsaNativeContract, InputOnlyAndOutputOnlyPreserveTheirChannelCounts) {
         ASSERT_TRUE(b.open(cfg));
         EXPECT_EQ(input ? captureChannels : playbackChannels, input ? 3u : 1u);
         ASSERT_TRUE(b.close());
+    }
+}
+
+extern "C" {
+snd_pcm_sframes_t __real_snd_pcm_avail_update(snd_pcm_t*);
+snd_pcm_sframes_t __wrap_snd_pcm_avail_update(snd_pcm_t* p) {
+    if (persistentXrun) return -EPIPE;
+    if (const int error = injectAvail.exchange(0)) return error;
+    return __real_snd_pcm_avail_update(p);
+}
+int __real_snd_pcm_resume(snd_pcm_t*);
+int __wrap_snd_pcm_resume(snd_pcm_t*) { ++resumes; return -EAGAIN; }
+int __real_snd_pcm_mmap_begin(snd_pcm_t*, const snd_pcm_channel_area_t**, snd_pcm_uframes_t*, snd_pcm_uframes_t*);
+int __wrap_snd_pcm_mmap_begin(snd_pcm_t* p, const snd_pcm_channel_area_t** a, snd_pcm_uframes_t* o, snd_pcm_uframes_t* n) {
+    const int r = __real_snd_pcm_mmap_begin(p,a,o,n);
+    if (r >= 0 && zeroChunk.exchange(false)) *n = 0;
+    return r;
+}
+snd_pcm_sframes_t __real_snd_pcm_mmap_commit(snd_pcm_t*, snd_pcm_uframes_t, snd_pcm_uframes_t);
+snd_pcm_sframes_t __wrap_snd_pcm_mmap_commit(snd_pcm_t* p, snd_pcm_uframes_t o, snd_pcm_uframes_t n) {
+    const auto r = __real_snd_pcm_mmap_commit(p,o,n);
+    if (r > 0 && shortCommit.exchange(false)) return r-1;
+    return r;
+}
+}
+TEST_F(AlsaNativeContract, XrunSuspendZeroChunksAndShortCommitsRecoverWithoutLosingCallbacks) {
+    ALSA b; std::atomic<unsigned> calls{0};
+    ASSERT_TRUE(b.setProcessFunction(+[](void* u,const AudioProcessContext&) noexcept { ++*static_cast<std::atomic<unsigned>*>(u); }, &calls));
+    ASSERT_TRUE(b.open(config())); ASSERT_TRUE(b.start());
+    ASSERT_TRUE(waitFor([&] { return calls.load() > 10; }));
+    for (int incident = 0; incident < 4; ++incident) {
+        const auto before = b.status().xruns, count = static_cast<std::uint64_t>(calls.load());
+        if (incident == 0) injectAvail = -EPIPE;
+        if (incident == 1) injectAvail = -ESTRPIPE;
+        if (incident == 2) zeroChunk = true;
+        if (incident == 3) shortCommit = true;
+        EXPECT_TRUE(waitFor([&] { return b.status().xruns > before && calls.load() > count + 10; }));
+        EXPECT_FALSE(b.status().failed);
+    }
+    EXPECT_GT(resumes.load(), 0u);
+    ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
+}
+TEST_F(AlsaNativeContract, DisconnectionAndRepeatedRecoveryFailuresTerminateAndAllowReopen) {
+    for (const bool disconnected : {true, false}) {
+        ALSA b; ASSERT_TRUE(b.open(config())); ASSERT_TRUE(b.start());
+        if (disconnected) injectAvail = -ENODEV;
+        else persistentXrun = true;
+        EXPECT_TRUE(waitFor([&] { return b.status().failed; }));
+        persistentXrun = false;
+        EXPECT_EQ(b.status().xruns, disconnected ? 0u : 1u);
+        ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
+        ASSERT_TRUE(b.open(config())); ASSERT_TRUE(b.start());
+        EXPECT_FALSE(b.status().failed); EXPECT_EQ(b.status().xruns, 0u);
+        ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
     }
 }

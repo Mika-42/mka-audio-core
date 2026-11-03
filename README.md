@@ -1244,3 +1244,8 @@ ALSA requires an exact period of `bufferSize` frames and a ring of exactly three
 whole periods. It reads back the rate, period, period count and ring size after
 applying hardware parameters. Fractional/nearest periods or a different ring
 return `BufferSizeNotSupported`; failed native readbacks return `ConfigurationFailed`.
+
+An ALSA mmap chunk with no frames or an invalid ring range is treated as an xrun,
+not retried in a tight transfer loop. Recovery drops/prepares/prefills/restarts the
+stream. Device loss fails immediately; repeated recovery failures terminate the
+stream and leave diagnostics available for the control thread's stop/close cycle.
