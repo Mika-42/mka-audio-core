@@ -60,8 +60,7 @@
         "rhs": "Windows"
       },
       "cacheVariables": {
-        "CMAKE_CXX_COMPILER": "cl",
-        "CMAKE_CXX_FLAGS": "/std:c++latest"
+        "CMAKE_CXX_COMPILER": "cl"
       }
     },
     {
