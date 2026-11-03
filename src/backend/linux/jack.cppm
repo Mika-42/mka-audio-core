@@ -48,6 +48,7 @@ namespace mka::audio::core {
             JACK() noexcept = default;
 
             ~JACK() override {
+                stopDispatcher();
                 teardown();
             }
 

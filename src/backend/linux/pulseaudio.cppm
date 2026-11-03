@@ -33,6 +33,7 @@ namespace mka::audio::core {
             PulseAudio() noexcept = default;
 
             ~PulseAudio() override {
+                stopDispatcher();
                 teardown();
             }
 
