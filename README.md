@@ -1142,3 +1142,25 @@ request for PipeWire/PulseAudio. A latency request is not an exact hardware ring
 size, graph quantum, callback length or end-to-end latency guarantee. Native
 callback `frames` remains authoritative. JACK also rechecks the server rate and
 quantum before start, because the server can change while the client is Open.
+
+## Discovery snapshots and effective capabilities
+
+`getEndPoints() const noexcept` runs on a control thread. It may allocate and
+communicate with the audio server; `noexcept` does not make it real-time safe.
+It returns a snapshot by value and reserves no resource. A missing `input` or
+`output` means that direction was not exposed in this snapshot; it may be busy,
+unavailable or unsupported. An empty endpoint list can also mean discovery failed;
+the current interface has no separate discovery error channel.
+
+| Backend | What discovery actually reports |
+| --- | --- |
+| ALSA | Native channel bounds and independent probes of the framework’s candidate rates, formats and period sizes. Busy/unqueryable streams can be omitted. |
+| JACK | Current server rate/quantum and counts of audio ports grouped by client, with server output ports exposed as framework inputs. |
+| PipeWire | Registry node identities and generic candidates: 1–2 channels, Float32, the framework’s rate and buffer-size lists. These are not per-node EnumFormat probes. |
+| PulseAudio | Sink/source identities and reported server channel counts; Float32 plus the framework’s rate and buffer-size candidates. Server conversion may apply. |
+
+The lists are neither exhaustive hardware capabilities nor a promise that every
+combination works. `supportedSampleRates`, `supportedFormats` and
+`supportedBufferSizes` are framework candidates, not proof of device support.
+Never validate `open()` only against a cached discovery result: the native stream
+must still be checked and can explicitly reject an advertised candidate.

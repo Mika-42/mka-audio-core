@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <string>
 #include <limits>
 #include <type_traits>
@@ -17,9 +18,10 @@ public:
     std::vector<Endpoint> endpoints;
     EndpointConfig opened{};
     unsigned openCalls = 0;
+    std::optional<ErrorType> openError;
 protected:
     std::vector<Endpoint> getEndPoints_() const override { return endpoints; }
-    Result open_(EndpointConfig const& config) override { ++openCalls; opened = config; return {}; }
+    Result open_(EndpointConfig const& config) override { ++openCalls; if (openError) return std::unexpected{*openError}; opened = config; return {}; }
     Result start_() override { return {}; }
     Result stop_() override { return {}; }
     Result close_() override { return {}; }
@@ -135,6 +137,44 @@ TEST(EndpointConfigurationTest, RejectsInvalidScalarsBeforeCallingTheNativeHook)
     ASSERT_TRUE(backend.open(valid));
     EXPECT_EQ(backend.opened.sampleRate, valid.sampleRate);
     EXPECT_EQ(backend.opened.format, valid.format);
+    EXPECT_TRUE(backend.close());
+}
+}
+
+namespace {
+TEST(EndpointDiscoveryContractTest, ReturnedCapabilitiesAreAnIndependentSnapshot) {
+    EndpointBackend backend;
+    backend.endpoints = {{"test", "First name", std::nullopt,
+                          StreamCapabilities{1, 2, {48000}, {Format::Float32}, {256}}}};
+    auto first = backend.getEndPoints();
+    ASSERT_EQ(first.size(), 1u);
+    backend.endpoints[0].name = "Changed name";
+    backend.endpoints[0].output->sampleRates = {44100};
+    EXPECT_EQ(first[0].name, "First name");
+    EXPECT_EQ(first[0].output->sampleRates, (std::vector<SampleRate>{48000}));
+    first[0].id = "modified by caller";
+    first[0].output->formats.clear();
+    const auto second = backend.getEndPoints();
+    ASSERT_EQ(second.size(), 1u);
+    EXPECT_EQ(second[0].id, "test");
+    EXPECT_EQ(second[0].name, "Changed name");
+    EXPECT_EQ(second[0].output->formats, (std::vector<Format>{Format::Float32}));
+}
+
+TEST(EndpointDiscoveryContractTest, AdvertisedCandidatesNeverOverrideTheNativeOpenResult) {
+    EndpointBackend backend;
+    backend.endpoints = {{"test", "Test", std::nullopt,
+                          StreamCapabilities{1, 2, {48000}, {Format::Float32}, {256}}}};
+    const auto discovered = backend.getEndPoints();
+    ASSERT_EQ(discovered.size(), 1u);
+    const EndpointConfig config{discovered[0].id, Direction::Output, 0, 2, 48000, Format::Float32, 256};
+    backend.openError = ErrorType::SampleRateNotSupported; // native state changed after discovery
+    const auto result = backend.open(config);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), ErrorType::SampleRateNotSupported);
+    EXPECT_EQ(backend.openCalls, 1u);
+    backend.openError.reset();
+    EXPECT_TRUE(backend.open(config)); // failure did not reserve the endpoint
     EXPECT_TRUE(backend.close());
 }
 }
