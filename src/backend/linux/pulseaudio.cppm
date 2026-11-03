@@ -368,6 +368,19 @@ namespace mka::audio::core {
         if (!PA_CONTEXT_IS_GOOD(pa_context_get_state(context_)))
             return fail(ErrorType::EndpointUnavailable);
 
+        // Latency is a request, not an exact quantum. Validate the server's
+        // effective transport lengths without requiring it to echo our request.
+        const auto* negotiated = pa_stream_get_buffer_attr(stream_);
+        if (!negotiated) return fail(ErrorType::ConfigurationFailed);
+        const auto length = direction_ == Direction::Input ? negotiated->fragsize : negotiated->tlength;
+        if (length == 0 || length == UINT32_MAX || length % bytesPerFrame != 0
+            || (negotiated->maxlength != UINT32_MAX && length > negotiated->maxlength))
+            return fail(ErrorType::BufferSizeNotSupported);
+        if (direction_ == Direction::Output
+            && (negotiated->prebuf > length || negotiated->minreq > length
+                || negotiated->prebuf % bytesPerFrame != 0 || negotiated->minreq % bytesPerFrame != 0))
+            return fail(ErrorType::BufferSizeNotSupported);
+
         // Keep the verified native stream corked: open() never invokes user code.
         pa_threaded_mainloop_unlock(loop_);
         return {};

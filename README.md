@@ -1259,3 +1259,8 @@ PipeWire terminal states disable user processing before publishing failure. A ne
 native stream starts with fresh native readiness/failure flags; previous stream
 loss cannot poison the next open. `stop()` still waits for any in-flight process
 callback before its user data can be replaced or released.
+
+PulseAudio reads the negotiated buffer attributes once the native stream is ready.
+The effective playback length or capture fragment must contain whole frames and
+fit the server's maximum. Server rounding remains allowed: `bufferSize` requests
+latency, while callback frames stay bounded by preallocated scratch capacity.

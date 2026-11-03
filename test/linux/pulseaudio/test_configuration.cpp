@@ -12,7 +12,7 @@ import mka.audio.backend.pulseaudio;
 
 namespace {
 using namespace mka::audio::core;
-enum class Mismatch { None, Format, Rate, Channels };
+enum class Mismatch { None, Format, Rate, Channels, MissingAttributes, ZeroLength, UnalignedLength, ShortMaximum, ExcessPrebuf, RoundedLatency };
 Mismatch mismatch = Mismatch::None;
 
 EndpointConfig config() {
@@ -93,4 +93,53 @@ TEST(PulseConfigurationOfflineTest, UnavailableServerFailsAtOpenAndLeavesTheBack
     EXPECT_EQ(result.error(), ErrorType::EndpointUnavailable);
     EXPECT_FALSE(backend.start());
     EXPECT_FALSE(backend.close());
+}
+
+namespace {
+pa_buffer_attr requestedAttributes{};
+}
+extern "C" {
+int __real_pa_stream_connect_playback(pa_stream*,const char*,const pa_buffer_attr*,pa_stream_flags_t,const pa_cvolume*,pa_stream*);
+int __wrap_pa_stream_connect_playback(pa_stream* s,const char* d,const pa_buffer_attr* a,pa_stream_flags_t f,const pa_cvolume* v,pa_stream* sync) {
+    requestedAttributes = *a; return __real_pa_stream_connect_playback(s,d,a,f,v,sync);
+}
+int __real_pa_stream_connect_record(pa_stream*,const char*,const pa_buffer_attr*,pa_stream_flags_t);
+int __wrap_pa_stream_connect_record(pa_stream* s,const char* d,const pa_buffer_attr* a,pa_stream_flags_t f) {
+    requestedAttributes = *a; return __real_pa_stream_connect_record(s,d,a,f);
+}
+const pa_buffer_attr* __real_pa_stream_get_buffer_attr(pa_stream*);
+const pa_buffer_attr* __wrap_pa_stream_get_buffer_attr(pa_stream* s) {
+    const auto* actual = __real_pa_stream_get_buffer_attr(s);
+    if (!actual || mismatch == Mismatch::MissingAttributes) return nullptr;
+    static pa_buffer_attr modified;
+    modified = *actual;
+    const bool recording = requestedAttributes.fragsize != UINT32_MAX;
+    auto& length = recording ? modified.fragsize : modified.tlength;
+    if (mismatch == Mismatch::ZeroLength) length = 0;
+    if (mismatch == Mismatch::UnalignedLength) ++length;
+    if (mismatch == Mismatch::ShortMaximum) modified.maxlength = 1;
+    if (mismatch == Mismatch::ExcessPrebuf) modified.prebuf = modified.tlength + 8;
+    if (mismatch == Mismatch::RoundedLatency) { length += 8*37; modified.maxlength = UINT32_MAX; }
+    return &modified;
+}
+}
+TEST_F(PulseConfigurationTest, ChecksNegotiatedLengthsAndAcceptsServerLatencyRounding) {
+    for (const bool input : {false,true}) {
+        auto cfg = config();
+        if (input) { cfg.direction = Direction::Input; cfg.inputChannels = 2; cfg.outputChannels = 0; }
+        for (const auto injected : {Mismatch::None,Mismatch::RoundedLatency}) {
+            mismatch = injected;
+            PulseAudio b; ASSERT_TRUE(b.open(cfg));
+            EXPECT_EQ(input ? requestedAttributes.fragsize : requestedAttributes.tlength,cfg.bufferSize*2*sizeof(float));
+            ASSERT_TRUE(b.start()); ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
+        }
+        for (const auto injected : {Mismatch::MissingAttributes,Mismatch::ZeroLength,Mismatch::UnalignedLength,Mismatch::ShortMaximum}) {
+            mismatch = injected; PulseAudio b;
+            const auto result = b.open(cfg); ASSERT_FALSE(result);
+            EXPECT_EQ(result.error(),injected == Mismatch::MissingAttributes ? ErrorType::ConfigurationFailed : ErrorType::BufferSizeNotSupported);
+            mismatch = Mismatch::None; ASSERT_TRUE(b.open(cfg)); ASSERT_TRUE(b.close());
+        }
+    }
+    mismatch = Mismatch::ExcessPrebuf; PulseAudio b;
+    EXPECT_EQ(b.open(config()).error(),ErrorType::BufferSizeNotSupported);
 }
