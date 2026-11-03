@@ -69,7 +69,7 @@ export namespace mka::audio::core {
     class Backend {
         public:
             Backend() noexcept = default;
-            virtual ~Backend() = default;
+            virtual ~Backend() { stopDispatcher(); }
 
             Backend(const Backend&) = delete;
             Backend& operator=(const Backend&) = delete;
@@ -316,6 +316,9 @@ export namespace mka::audio::core {
                 }
             }
 
+        protected:
+            // Derived destructors must join event delivery before destroying their
+            // resources, then quiesce native audio before releasing buffers.
             void stopDispatcher() noexcept {
                 try {
                     if (dispatcher_.joinable()) {
@@ -327,6 +330,7 @@ export namespace mka::audio::core {
                 }
             }
 
+        private:
             void dispatchLoop(const std::stop_token& stopToken) noexcept {
                 dispatchingFor_ = this;   // marque ce thread : voir calledFromDispatcher()
                 std::uint64_t lastXRuns = 0;

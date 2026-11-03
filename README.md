@@ -1223,3 +1223,10 @@ Discovery and lifecycle hooks on one backend are serialized on the control
 mutex; audio callbacks and `status()` never acquire it. Call discovery from a
 control thread. Discovery from the event dispatcher returns an empty snapshot,
 just as failed discovery does; handlers should post requests to the control thread.
+
+Backend destruction runs on a control thread while external callers are quiescent.
+Derived destructors first call the protected `stopDispatcher()` to join event
+handlers while derived resources are alive, then stop/join native audio and
+release buffers. The base destructor cannot perform virtual native cleanup.
+Handler and process user data must outlive this shutdown; destruction from a
+handler or audio callback is unsupported.

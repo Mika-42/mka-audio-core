@@ -29,6 +29,7 @@ namespace mka::audio::core {
         }
 
         ~PipeWire() override {
+                stopDispatcher();
             teardownStream();
             pw_deinit();
         }

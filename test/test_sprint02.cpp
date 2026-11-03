@@ -16,6 +16,12 @@ using namespace std::chrono_literals;
 // A resource-owning native hook: rollback belongs to the hook, not the base.
 class TransactionBackend : public Backend {
 public:
+    ~TransactionBackend() override {
+        stopDispatcher();
+        failStop = 0;
+        (void)stop();
+        (void)close();
+    }
     int failOpen = 0;
     int failStart = 0;
     int failStop = 0;
@@ -195,4 +201,22 @@ TEST(Sprint02Discovery, DiscoveryAndNativeControlHooksNeverOverlap) {
     }
     scanner.join();
     EXPECT_FALSE(b.overlapped.load());
+}
+
+TEST(Sprint02Destruction, RunningDestructionJoinsAudioAndDispatcherBeforeReturning) {
+    std::atomic<unsigned> events{0};
+    const auto handler = +[](void* user, const Event&) noexcept {
+        ++*static_cast<std::atomic<unsigned>*>(user);
+    };
+    for (int i = 0; i < 100; ++i) {
+        auto b = std::make_unique<TransactionBackend>();
+        ASSERT_TRUE(b->setEventHandler(handler, &events));
+        ASSERT_TRUE(b->open(testEndpointConfig()));
+        ASSERT_TRUE(b->start());
+        b->failStream();
+        b.reset();
+        const auto count = events.load();
+        std::this_thread::sleep_for(100us);
+        EXPECT_EQ(events.load(), count);
+    }
 }

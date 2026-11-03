@@ -52,6 +52,7 @@ export namespace mka::audio::core {
     class ALSA final : public Backend {
     public:
         ~ALSA() override {
+                stopDispatcher();
             if (audioThread_.joinable()) {
                 audioThread_.request_stop();
                 audioThread_.join();
