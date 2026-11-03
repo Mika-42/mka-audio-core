@@ -444,10 +444,9 @@ export namespace mka::audio::core {
                 return fail(ErrorType::BufferSizeNotSupported);
             }
 
-            unsigned int periods = kPeriods;
             int dir = 0;
-            if (snd_pcm_hw_params_set_periods_near(pcm, hw, &periods, &dir) < 0) {
-                return fail(ErrorType::ConfigurationFailed);
+            if (snd_pcm_hw_params_set_periods(pcm, hw, kPeriods, 0) < 0) {
+                return fail(ErrorType::BufferSizeNotSupported);
             }
 
             if (snd_pcm_hw_params(pcm, hw) < 0) return fail(ErrorType::ConfigurationFailed);
@@ -467,12 +466,18 @@ export namespace mka::audio::core {
 
             snd_pcm_uframes_t period = 0;
             snd_pcm_uframes_t buffer = 0;
+            unsigned actualPeriods = 0;
+            int periodsDirection = 0;
             if (snd_pcm_hw_params_get_period_size(hw, &period, &dir) < 0
                 || snd_pcm_hw_params_get_buffer_size(hw, &buffer) < 0
-                || period != cfg.bufferSize
-                || buffer < 2 * period) {
+                || snd_pcm_hw_params_get_periods(hw, &actualPeriods, &periodsDirection) < 0)
                 return fail(ErrorType::ConfigurationFailed);
-            }
+            // No nearest-period or fractional ring fallback. Division checks the
+            // native frame width without overflowing a period * periods product.
+            if (period == 0 || period != cfg.bufferSize || dir != 0
+                || actualPeriods != kPeriods || periodsDirection != 0
+                || buffer / period != kPeriods || buffer % period != 0)
+                return fail(ErrorType::BufferSizeNotSupported);
 
             // sw_params : réveil à chaque période, démarrage uniquement manuel
             // (après préremplissage), stop_threshold par défaut (= buffer) pour que
