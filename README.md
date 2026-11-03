@@ -1446,3 +1446,9 @@ IAudioRenderClient before open succeeds. Event creation, registration and servic
 failures release the pending handles/interfaces. Open does not acquire audio
 buffers or call the process function; the native client is released before its
 event handle is closed.
+
+Capture acquires IAudioCaptureClient and consumes only bounded native packets.
+Each successful GetBuffer has exactly one ReleaseBuffer, including rejected
+packets; empty/failed acquisitions are not released. SILENT packets may have a
+null data pointer. Non-silent null data, oversized frames and unknown flags never
+reach processing. Borrowed native bytes remain valid only until ReleaseBuffer.
