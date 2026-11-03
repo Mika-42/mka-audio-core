@@ -22,7 +22,7 @@ The main goals of the project are:
 * Unified input/output endpoint model
 * Strict separation between control and real-time audio code
 * No dynamic allocation in the real-time processing path
-* Fixed-size framework processing blocks
+* Backend-provided processing lengths, independent of DSP block sizes
 * Support for different backend buffer sizes
 * Unified floating-point audio buffers at the framework level
 * Minimal and predictable API
@@ -420,40 +420,24 @@ Anything requiring allocation or potentially blocking behavior belongs outside t
 
 ---
 
-# Fixed-size processing blocks
+# Backend buffer size and callback frames
 
-One important architectural distinction is made between:
+`EndpointConfig::bufferSize` is a backend transport parameter, in frames per
+channel. It is not a DSP block size. `AudioProcessContext::frames` is the actual
+number of valid samples in **each channel** of the current callback. Consumers
+must process exactly `[0, frames)` and read `frames` on every call.
 
-1. backend buffer size
-2. framework processing block size
-3. DSP-specific processing size
-4. algorithmic window size
+* ALSA uses `bufferSize` as its period size, not the total native ring size.
+* JACK checks the server quantum at open; callbacks carry the current `nframes`.
+* PipeWire requests a node latency of `bufferSize / sampleRate`; native buffers
+  and the graph quantum determine the actual callback length.
+* PulseAudio uses `bufferSize` for its latency request and preallocated scratch
+  capacity. Native requests are split into chunks of at most that many frames;
+  the last chunk can be shorter.
 
-These are not necessarily the same thing.
-
-The backend may provide buffers whose size differs from the framework's processing block.
-
-The framework therefore acts as a boundary between the external audio world and the deterministic DSP world.
-
-```mermaid
-flowchart LR
-    BACKEND["Backend"]
-    BUFFER["Backend buffers"]
-    NORMALIZE["Buffer normalization / accumulation"]
-    BLOCKS["Fixed-size framework blocks"]
-    DSP["DSP"]
-
-    BACKEND --> BUFFER
-    BUFFER --> NORMALIZE
-    NORMALIZE --> BLOCKS
-    BLOCKS --> DSP
-```
-
-This means DSP implementations do not need to individually handle backend-specific buffer irregularities.
-
-The accumulation required to transform backend buffers into framework blocks belongs to the framework itself.
-
-Algorithm-specific buffering remains the responsibility of the DSP component.
+Core Audio transports those frames without accumulating fixed DSP blocks. A DSP
+engine needing fixed blocks must adapt them outside Core Audio. A latency request
+is not a guarantee about end-to-end latency or callback scheduling.
 
 ---
 
@@ -1002,7 +986,7 @@ Current development priorities include:
 * [ ] Implement complete ALSA backend
 * [ ] Implement complete PipeWire backend
 * [ ] Implement JACK backend
-* [ ] Implement fixed-size framework block accumulation
+* [ ] Integrate external DSP block adaptation without adding it to Core Audio
 * [ ] Add comprehensive backend tests
 * [ ] Add real-time safety tests
 * [ ] Add performance/latency benchmarks

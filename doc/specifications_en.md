@@ -419,3 +419,13 @@ The DAW decides what should be processed.
 Any functionality that is not directly related to device discovery, capability discovery, stream configuration, stream lifecycle or real-time audio transport belongs to a higher-level component.
 
 `EndpointConfig::direction` requires Input: `inputChannels > 0`, `outputChannels == 0`; Output: `inputChannels == 0`, `outputChannels > 0`; Duplex: both counts greater than zero. Inconsistent counts return `ChannelsNotSupported` before any native resource is opened. Unknown direction values return `ConfigurationFailed`. Backend-specific channel limits still apply.
+
+## Backend buffer size and callback frames
+
+`bufferSize` is measured in frames per channel, not bytes or total samples.
+ALSA interprets it as a period (the ring contains several periods); JACK validates
+the initial server quantum. PipeWire/PulseAudio request transport latency;
+PulseAudio also uses it to bound preallocated scratch chunks. These latency
+requests do not guarantee server latency or a fixed callback length.
+`AudioProcessContext::frames` is authoritative for every call: process exactly
+that many samples per channel. Core Audio never accumulates fixed DSP blocks.

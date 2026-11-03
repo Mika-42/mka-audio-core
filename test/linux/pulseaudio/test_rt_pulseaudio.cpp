@@ -121,3 +121,41 @@ TEST_F(PulseAudioRtContractTest, NoCallbackAfterStopUnderStress) {
     ASSERT_TRUE(pa.close());
     EXPECT_STREQ(failure, "");
 }
+
+namespace {
+    struct FrameContractState {
+        std::atomic<unsigned> calls{0};
+        std::atomic<std::uint64_t> frames{0};
+        std::atomic<bool> invalid{false};
+    };
+    void frameContractCallback(void* user, const mka::audio::core::AudioProcessContext& ctx) noexcept {
+        auto& state = *static_cast<FrameContractState*>(user);
+        if (ctx.frames == 0 || ctx.frames > kBuffer || ctx.output.count != kChannels
+            || ctx.input.count != 0 || ctx.input.channels != nullptr || !ctx.output.channels) {
+            state.invalid.store(true);
+            return;
+        }
+        // Touch the entire declared range. ASan detects invalid sizes/pointers.
+        for (std::uint32_t ch = 0; ch < ctx.output.count; ++ch) {
+            if (!ctx.output.channels[ch]) { state.invalid.store(true); return; }
+            std::fill_n(ctx.output.channels[ch], ctx.frames, 0.0f);
+        }
+        state.frames.fetch_add(ctx.frames);
+        state.calls.fetch_add(1);
+    }
+}
+
+TEST_F(PulseAudioRtContractTest, CallbackFramesStayInsidePreallocatedCapacity) {
+    FrameContractState state;
+    mka::audio::core::PulseAudio pa;
+    ASSERT_TRUE(pa.setProcessFunction(frameContractCallback, &state));
+    ASSERT_TRUE(pa.open(makeConfig()));
+    ASSERT_TRUE(pa.start());
+    const bool enough = rt_test::waitFor([&] { return state.calls.load() >= rt_test::kMinCycles; });
+    ASSERT_TRUE(pa.stop());
+    ASSERT_TRUE(pa.close());
+    EXPECT_TRUE(enough);
+    EXPECT_FALSE(state.invalid.load());
+    EXPECT_GE(state.frames.load(), state.calls.load());
+    EXPECT_LE(state.frames.load(), static_cast<std::uint64_t>(state.calls.load()) * kBuffer);
+}

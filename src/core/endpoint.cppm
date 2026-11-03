@@ -42,6 +42,9 @@ export namespace mka::audio::core {
 
         SampleRate sampleRate;
         Format format;
+        // Paramètre de transport en frames/canal, jamais une taille de bloc DSP.
+        // ALSA : période ; JACK : quantum initial ; PipeWire/PulseAudio : demande
+        // de latence. AudioProcessContext::frames donne la taille de chaque appel.
         BufferSize bufferSize;
     };
 }

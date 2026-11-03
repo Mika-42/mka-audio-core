@@ -19,6 +19,9 @@ export namespace mka::audio::core {
     struct AudioProcessContext {
         InputBuffer input;
         OutputBuffer output;
+        // Échantillons valides PAR CANAL pour cet appel, pas un nombre d’octets
+        // ni frames * count. Peut varier ; ne pas déduire de EndpointConfig::bufferSize.
+        // Le Core ne fait pas d’accumulation en blocs DSP fixes.
         std::uint32_t frames;
     };
 
