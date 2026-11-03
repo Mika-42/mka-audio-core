@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <string>
 #include <chrono>
 #include <expected>
@@ -13,13 +14,14 @@ import mka.audio.backend.abstract;
 import mka.audio.backend.pipewire;
 namespace {
 using namespace mka::audio::core;
-enum class Fault { None, Format, Rate, Channels, Malformed, SmallQuantum, HugeQuantum };
+enum class Fault { None, Format, Rate, Channels, Malformed, SmallQuantum, HugeQuantum, TerminalError };
 std::atomic<Fault> fault{Fault::None};
 std::atomic<int> liveStreams{0};
 std::string requestedLatency;
 std::atomic<std::uint32_t> expectedFrames{0};
 std::atomic<unsigned> checkedChunks{0};
 std::atomic<bool> badChunk{false};
+std::atomic<bool> injectTerminal{false};
 template<class P> bool waitFor(P p) {
     const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     while (!p() && std::chrono::steady_clock::now() < end) std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -30,7 +32,7 @@ pw_stream_events interceptedEvents{};
 spa_audio_info_raw requested{};
 pw_stream_flags requestedFlags{};
 void interceptFormat(void* data, std::uint32_t id, const spa_pod* pod) {
-    if (id != SPA_PARAM_Format || !pod || fault == Fault::None || fault == Fault::SmallQuantum || fault == Fault::HugeQuantum) {
+    if (id != SPA_PARAM_Format || !pod || (fault != Fault::Format && fault != Fault::Rate && fault != Fault::Channels && fault != Fault::Malformed)) {
         nativeEvents->param_changed(data,id,pod); return;
     }
     if (fault == Fault::Malformed) {
@@ -44,6 +46,10 @@ void interceptFormat(void* data, std::uint32_t id, const spa_pod* pod) {
     alignas(8) std::uint8_t storage[1024];
     spa_pod_builder builder = SPA_POD_BUILDER_INIT(storage,sizeof(storage));
     nativeEvents->param_changed(data,id,spa_format_audio_raw_build(&builder,SPA_PARAM_Format,&info));
+}
+void interceptProcess(void* data) {
+    if (injectTerminal.exchange(false)) nativeEvents->state_changed(data,PW_STREAM_STATE_STREAMING,PW_STREAM_STATE_ERROR,"injected disconnect");
+    nativeEvents->process(data);
 }
 class PipeWireNativeContract : public ::testing::Test {
 protected:
@@ -61,7 +67,7 @@ pw_stream* __real_pw_stream_new_simple(pw_loop*,const char*,pw_properties*,const
 pw_stream* __wrap_pw_stream_new_simple(pw_loop* loop,const char* name,pw_properties* props,const pw_stream_events* events,void* data) {
     const char* latency = pw_properties_get(props,PW_KEY_NODE_LATENCY);
     requestedLatency = latency ? latency : "";
-    nativeEvents = events; interceptedEvents = *events; interceptedEvents.param_changed = interceptFormat;
+    nativeEvents = events; interceptedEvents = *events; interceptedEvents.param_changed = interceptFormat; interceptedEvents.process = interceptProcess;
     auto* stream = __real_pw_stream_new_simple(loop,name,props,&interceptedEvents,data);
     if (stream) ++liveStreams;
     return stream;
@@ -155,4 +161,47 @@ TEST_F(PipeWireNativeContract, LatencyRequestAndEffectiveCallbackFramesRespectNa
         EXPECT_FALSE(wrongFrames.load()); EXPECT_FALSE(badChunk.load()); EXPECT_GT(checkedChunks.load(),0u);
         fault = Fault::None;
     }
+}
+
+TEST_F(PipeWireNativeContract, StopJoinsAnInFlightCallbackBeforeReplacingAndFreeingUserData) {
+    struct Gate { std::atomic<bool> entered{false},release{false}; std::atomic<unsigned>& calls; };
+    std::atomic<unsigned> oldCalls{0},newCalls{0};
+    auto gate = std::unique_ptr<Gate>{new Gate{{false},{false},oldCalls}};
+    PipeWire b;
+    struct Release { Gate* gate; ~Release() { if (gate) gate->release = true; } } release{gate.get()};
+    ASSERT_TRUE(b.setProcessFunction(+[](void* u,const AudioProcessContext&) noexcept {
+        auto& g = *static_cast<Gate*>(u); g.entered = true;
+        while (!g.release.load()) std::this_thread::yield();
+        ++g.calls;
+    },gate.get()));
+    ASSERT_TRUE(b.open(cfg)); ASSERT_TRUE(b.start());
+    EXPECT_TRUE(waitFor([&] { return gate->entered.load(); }));
+    std::atomic<bool> stopped{false};
+    std::thread control([&] { stopped = b.stop().has_value(); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    const bool waited = !stopped.load();
+    gate->release = true; control.join();
+    EXPECT_TRUE(waited); EXPECT_TRUE(stopped.load());
+    ASSERT_TRUE(b.setProcessFunction(+[](void* u,const AudioProcessContext&) noexcept { ++*static_cast<std::atomic<unsigned>*>(u); },&newCalls));
+    release.gate = nullptr; gate.reset();
+    const auto before = oldCalls.load();
+    ASSERT_TRUE(b.start());
+    EXPECT_TRUE(waitFor([&] { return newCalls.load() > 10; }));
+    ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
+    EXPECT_EQ(oldCalls.load(),before);
+}
+TEST_F(PipeWireNativeContract, TerminalNativeStateDisablesPendingProcessCallbacks) {
+    PipeWire b; std::atomic<unsigned> calls{0},failedEvents{0};
+    ASSERT_TRUE(b.setProcessFunction(+[](void* u,const AudioProcessContext&) noexcept { ++*static_cast<std::atomic<unsigned>*>(u); },&calls));
+    ASSERT_TRUE(b.setEventHandler(+[](void* u,const Event& e) noexcept { if(e.type == EventType::Failed) ++*static_cast<std::atomic<unsigned>*>(u); },&failedEvents));
+    ASSERT_TRUE(b.open(cfg)); ASSERT_TRUE(b.start());
+    EXPECT_TRUE(waitFor([&] { return calls.load() > 10; }));
+    injectTerminal = true;
+    EXPECT_TRUE(waitFor([&] { return b.status().failed && failedEvents.load() == 1; }));
+    const auto count = calls.load(); std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    EXPECT_EQ(calls.load(),count);
+    ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
+    ASSERT_TRUE(b.open(cfg)); ASSERT_TRUE(b.start());
+    EXPECT_FALSE(b.status().failed);
+    ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
 }

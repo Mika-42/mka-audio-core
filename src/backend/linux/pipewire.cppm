@@ -106,12 +106,13 @@ namespace mka::audio::core {
                 }
                 break;
             case PW_STREAM_STATE_ERROR:
+            case PW_STREAM_STATE_UNCONNECTED: { // serveur parti ou nœud supprimé
                 self->failed_.store(true, std::memory_order_release);
-                if (self->active_.load(std::memory_order_acquire)) self->notifyFailed();
+                self->processEnabled_.store(false, std::memory_order_seq_cst);
+                self->ready_.store(false, std::memory_order_release);
+                if (self->active_.exchange(false, std::memory_order_acq_rel)) self->notifyFailed();
                 break;
-            case PW_STREAM_STATE_UNCONNECTED:   // serveur parti ou nœud supprimé
-                if (self->active_.load(std::memory_order_acquire)) self->notifyFailed();
-                break;
+            }
             default:
                 break;
         }
@@ -310,6 +311,12 @@ namespace mka::audio::core {
         }
 
         direction_ = endpointCfg.direction;
+        // Native terminal notifications from the previous stream must not poison
+        // a new open. No native loop is alive while these flags are reset.
+        failed_.store(false, std::memory_order_release);
+        ready_.store(false, std::memory_order_release);
+        active_.store(false, std::memory_order_release);
+        processEnabled_.store(false, std::memory_order_seq_cst);
 
         // Construit AVANT toute ressource native : to_string peut lever.
         const std::string latency = std::to_string(endpointCfg.bufferSize) + "/" +
