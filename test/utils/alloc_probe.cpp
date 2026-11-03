@@ -7,13 +7,14 @@
 // À compiler UNE SEULE FOIS par exécutable de test.
 // Incompatible avec ASan/TSan/MSan (qui interceptent déjà operator new) :
 // lancer ces tests dans un build sans sanitizer, ou utiliser RealtimeSanitizer.
-// Les variantes over-aligned (align_val_t) ne sont pas comptées.
+// Les variantes over-aligned (align_val_t) sont comptées comme les autres new.
 //
 #include "rt_test_utils.hpp"
 
 #include <atomic>
 #include <cstdlib>
 #include <new>
+#include <limits>
 
 namespace {
     std::atomic<bool>        g_armed{false};
@@ -108,3 +109,26 @@ void operator delete(void* p, std::size_t) noexcept { std::free(p); }
 void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
 void operator delete(void* p, const std::nothrow_t&) noexcept { std::free(p); }
 void operator delete[](void* p, const std::nothrow_t&) noexcept { std::free(p); }
+
+// C++ aligned allocations do not necessarily pass through malloc. Count them
+// explicitly, and round safely for the aligned_alloc size requirement.
+void* operator new(const std::size_t n, const std::align_val_t alignment) {
+    note(); noteAudio();
+    const auto align = static_cast<std::size_t>(alignment);
+    const auto wanted = n ? n : 1;
+    if (wanted > std::numeric_limits<std::size_t>::max() - (align - 1)) throw std::bad_alloc{};
+    const auto rounded = ((wanted + align - 1) / align) * align;
+    if (void* p = std::aligned_alloc(align,rounded)) return p;
+    throw std::bad_alloc{};
+}
+void* operator new[](const std::size_t n, const std::align_val_t a) { return ::operator new(n,a); }
+void* operator new(const std::size_t n, const std::align_val_t a, const std::nothrow_t&) noexcept {
+    try { return ::operator new(n,a); } catch (...) { return nullptr; }
+}
+void* operator new[](const std::size_t n, const std::align_val_t a, const std::nothrow_t& t) noexcept { return ::operator new(n,a,t); }
+void operator delete(void* p, std::align_val_t) noexcept { std::free(p); }
+void operator delete[](void* p, std::align_val_t) noexcept { std::free(p); }
+void operator delete(void* p, std::size_t, std::align_val_t) noexcept { std::free(p); }
+void operator delete[](void* p, std::size_t, std::align_val_t) noexcept { std::free(p); }
+void operator delete(void* p, std::align_val_t, const std::nothrow_t&) noexcept { std::free(p); }
+void operator delete[](void* p, std::align_val_t, const std::nothrow_t&) noexcept { std::free(p); }

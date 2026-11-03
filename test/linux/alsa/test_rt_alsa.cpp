@@ -1,7 +1,7 @@
 //
 // Tests "contrat temps réel" ALSA : B7 (sortie à zéro) et absence d'allocation.
 //
-// Même configuration que test_alsa.cpp (duplex, Int32, 44100, 512). Le device
+// Configuration de sortie Int32, 44100 Hz, 512 frames ; aucun flux capture. Le device
 // se change avec la variable d'environnement MKA_TEST_ALSA_DEVICE (défaut hw:1,0).
 // Les tests sont ignorés si le device ne peut pas être ouvert.
 //
@@ -26,8 +26,8 @@ namespace {
         const char* env = std::getenv("MKA_TEST_ALSA_DEVICE");
         return mka::audio::core::EndpointConfig{
             .id = env ? env : "hw:1,0",
-            .direction = mka::audio::core::Direction::Duplex,
-            .inputChannels = 2,
+            .direction = mka::audio::core::Direction::Output,
+            .inputChannels = 0,
             .outputChannels = 2,
             .sampleRate = 44100,
             .format = mka::audio::core::Format::Int32,
