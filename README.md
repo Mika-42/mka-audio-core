@@ -1213,3 +1213,8 @@ port groups under the same client ID. Two unidirectional backend instances do no
 constitute a synchronized duplex stream and provide no shared clock/latency
 guarantee. Coordinating unrelated endpoints or adding duplex server backends is
 outside this contract and does not add a DSP graph to Core Audio.
+
+Before native acquisition, channel counts must fit a native signed `int` and a
+`size_t` pointer table. Each direction's requested Float32 buffer byte length
+must fit both `uint32_t` (native transport lengths) and `size_t`; multiplication
+is checked by division before allocation. Native device limits still apply.
