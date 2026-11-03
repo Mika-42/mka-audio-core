@@ -419,3 +419,14 @@ Le DAW décide de ce qui doit être traité.
 Toute fonctionnalité qui n’est pas directement liée à la découverte des périphériques, à la découverte de leurs capacités, à la configuration des streams, à leur cycle de vie ou au transport audio temps réel appartient à un composant de niveau supérieur.
 
 `EndpointConfig::direction` exige Input : `inputChannels > 0`, `outputChannels == 0` ; Output : `inputChannels == 0`, `outputChannels > 0` ; Duplex : les deux comptes strictement positifs. Des comptes incohérents retournent `ChannelsNotSupported` avant toute ouverture native. Une direction inconnue retourne `ConfigurationFailed`. Les limites de canaux propres au backend restent applicables.
+
+## Taille de buffer et frames du callback
+
+`bufferSize` est exprimé en frames par canal, pas en octets ni en échantillons
+totaux. ALSA l’interprète comme une période (le ring en contient plusieurs) ;
+JACK vérifie le quantum initial du serveur. PipeWire/PulseAudio demandent une
+latence de transport ; PulseAudio l’utilise aussi comme capacité des chunks de
+scratch préalloués. Ces demandes ne garantissent ni la latence du serveur ni une
+taille fixe de callback. `AudioProcessContext::frames` fait foi à chaque appel :
+traiter exactement ce nombre d’échantillons par canal. Core Audio n’accumule
+jamais de blocs DSP fixes.
