@@ -1338,3 +1338,10 @@ UBSan errors fail the run. Leak detection stays enabled. Allocation-interpositio
 and native RT probe sources are omitted in sanitizer builds; their ordinary
 build remains the place to verify allocation counts. An unknown sanitizer mode
 is a configuration error.
+
+ThreadSanitizer is a separate mode: configure/build/test with `--preset tsan`
+(or set `MKA_SANITIZER=thread`). It runs the SDK-independent `nonrt` control
+suite, including concurrent state changes and event dispatch; `rt` tests and
+allocator interposition are excluded. Native audio SDKs are not instrumented by
+this job, so its result does not establish race freedom inside those libraries.
+Sanitizer modes are mutually exclusive; findings fail the CTest/CI step.
