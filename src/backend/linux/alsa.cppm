@@ -547,6 +547,14 @@ export namespace mka::audio::core {
                 if (const int err = snd_pcm_mmap_begin(s.pcm, &areas, &offset, &chunk); err < 0) {
                     return err;
                 }
+                // An empty/malformed mmap must not spin forever or access an
+                // invalid ring range. Recovery will drop and prepare the stream.
+                if (!areas || chunk == 0 || chunk > frames - done
+                    || offset > s.bufferFrames || chunk > s.bufferFrames - offset)
+                    return -EPIPE;
+                for (std::uint32_t ch = 0; ch < s.channels; ++ch)
+                    if (!areas[ch].addr || areas[ch].step == 0 || areas[ch].step % 8 != 0)
+                        return -EPIPE;
 
                 for (std::uint32_t ch = 0; ch < s.channels; ++ch) {
                     convert::readChannel(s.layout, areaPtr(areas[ch], offset), areas[ch].step / 8,
@@ -573,6 +581,14 @@ export namespace mka::audio::core {
                 if (const int err = snd_pcm_mmap_begin(s.pcm, &areas, &offset, &chunk); err < 0) {
                     return err;
                 }
+                // An empty/malformed mmap must not spin forever or access an
+                // invalid ring range. Recovery will drop and prepare the stream.
+                if (!areas || chunk == 0 || chunk > frames - done
+                    || offset > s.bufferFrames || chunk > s.bufferFrames - offset)
+                    return -EPIPE;
+                for (std::uint32_t ch = 0; ch < s.channels; ++ch)
+                    if (!areas[ch].addr || areas[ch].step == 0 || areas[ch].step % 8 != 0)
+                        return -EPIPE;
 
                 for (std::uint32_t ch = 0; ch < s.channels; ++ch) {
                     convert::writeChannel(s.layout, areaPtr(areas[ch], offset), areas[ch].step / 8,
@@ -602,6 +618,14 @@ export namespace mka::audio::core {
                 if (const int err = snd_pcm_mmap_begin(s.pcm, &areas, &offset, &chunk); err < 0) {
                     return err;
                 }
+                // An empty/malformed mmap must not spin forever or access an
+                // invalid ring range. Recovery will drop and prepare the stream.
+                if (!areas || chunk == 0 || chunk > frames - done
+                    || offset > s.bufferFrames || chunk > s.bufferFrames - offset)
+                    return -EPIPE;
+                for (std::uint32_t ch = 0; ch < s.channels; ++ch)
+                    if (!areas[ch].addr || areas[ch].step == 0 || areas[ch].step % 8 != 0)
+                        return -EPIPE;
 
                 snd_pcm_areas_silence(areas, offset, s.channels, chunk, s.format);
 
