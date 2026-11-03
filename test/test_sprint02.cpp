@@ -16,6 +16,9 @@ using namespace std::chrono_literals;
 class TransactionBackend : public Backend {
 public:
     int failOpen = 0;
+    int failStart = 0;
+    std::atomic<int> liveWorkers{0};
+    std::jthread worker;
     bool reserved = false;
     unsigned openCalls = 0;
 protected:
@@ -33,8 +36,18 @@ protected:
         reservation.committed = true;
         return {};
     }
-    Result start_() override { return {}; }
-    Result stop_() override { return {}; }
+    Result start_() override {
+        std::jthread pending([this](std::stop_token token) {
+            ++liveWorkers;
+            while (!token.stop_requested()) std::this_thread::yield();
+            --liveWorkers;
+        });
+        if (failStart == 1) return std::unexpected{ErrorType::EndpointUnavailable};
+        if (failStart == 2) throw std::runtime_error("native activation");
+        worker = std::move(pending);
+        return {};
+    }
+    Result stop_() override { worker.request_stop(); if (worker.joinable()) worker.join(); return {}; }
     Result close_() override { reserved = false; return {}; }
 };
 
@@ -60,4 +73,27 @@ TEST(Sprint02Open, NativeErrorAndExceptionReleasePartialResourceAndAllowRetry) {
         EXPECT_FALSE(b.reserved);
     }
 }
+}
+
+TEST(Sprint02Start, FailureJoinsPartialWorkerAndCanRetryOrClose) {
+    for (int failure : {1, 2}) {
+        TransactionBackend b;
+        ASSERT_TRUE(b.open(testEndpointConfig()));
+        b.failStart = failure;
+        for (int attempt = 0; attempt < 20; ++attempt) {
+            const auto result = b.start();
+            ASSERT_FALSE(result);
+            EXPECT_EQ(result.error(), failure == 1 ? ErrorType::EndpointUnavailable : ErrorType::ConfigurationFailed);
+            EXPECT_EQ(b.liveWorkers.load(), 0);
+            EXPECT_TRUE(b.reserved);
+            EXPECT_EQ(b.stop().error(), ErrorType::InvalidState);
+        }
+        ASSERT_TRUE(b.close());
+        ASSERT_TRUE(b.open(testEndpointConfig()));
+        b.failStart = 0;
+        ASSERT_TRUE(b.start());
+        ASSERT_TRUE(b.stop());
+        EXPECT_EQ(b.liveWorkers.load(), 0);
+        ASSERT_TRUE(b.close());
+    }
 }
