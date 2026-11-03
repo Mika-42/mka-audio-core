@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <expected>
 #include <string>
+#include <limits>
 #include <type_traits>
 #include <vector>
 #include <gtest/gtest.h>
@@ -15,9 +16,10 @@ class EndpointBackend : public Backend {
 public:
     std::vector<Endpoint> endpoints;
     EndpointConfig opened{};
+    unsigned openCalls = 0;
 protected:
     std::vector<Endpoint> getEndPoints_() const override { return endpoints; }
-    Result open_(EndpointConfig const& config) override { opened = config; return {}; }
+    Result open_(EndpointConfig const& config) override { ++openCalls; opened = config; return {}; }
     Result start_() override { return {}; }
     Result stop_() override { return {}; }
     Result close_() override { return {}; }
@@ -58,4 +60,53 @@ static_assert(std::is_same_v<SampleRate, std::uint32_t>);
 static_assert(std::is_same_v<BufferSize, std::uint32_t>);
 static_assert(std::is_same_v<decltype(EndpointConfig::inputChannels), std::uint32_t>);
 static_assert(std::is_same_v<decltype(EndpointConfig::outputChannels), std::uint32_t>);
+}
+
+namespace {
+struct DirectionCase { Direction direction; std::uint32_t input; std::uint32_t output; };
+class DirectionContractTest : public ::testing::TestWithParam<DirectionCase> {};
+
+TEST_P(DirectionContractTest, RejectsInconsistentCountsBeforeTheNativeHook) {
+    EndpointBackend backend;
+    const auto [direction, input, output] = GetParam();
+    EndpointConfig config{"test", direction, input, output, 48000, Format::Float32, 256};
+    const auto result = backend.open(config);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), ErrorType::ChannelsNotSupported);
+    EXPECT_EQ(backend.openCalls, 0u);
+    config = {"test", Direction::Output, 0, 2, 48000, Format::Float32, 256};
+    ASSERT_TRUE(backend.open(config)); // failed validation leaves the backend Closed
+    EXPECT_TRUE(backend.close());
+}
+INSTANTIATE_TEST_SUITE_P(InvalidCounts, DirectionContractTest, ::testing::Values(
+    DirectionCase{Direction::Input, 0, 0}, DirectionCase{Direction::Input, 2, 1},
+    DirectionCase{Direction::Output, 0, 0}, DirectionCase{Direction::Output, 1, 2},
+    DirectionCase{Direction::Duplex, 0, 2}, DirectionCase{Direction::Duplex, 2, 0},
+    DirectionCase{Direction::Duplex, 0, 0},
+    DirectionCase{Direction::Input, 2, std::numeric_limits<std::uint32_t>::max()},
+    DirectionCase{Direction::Output, std::numeric_limits<std::uint32_t>::max(), 2}
+));
+
+TEST(DirectionContractTest, ForwardsAllValidDirectionsAndCountsUnchanged) {
+    EndpointBackend backend;
+    for (const auto& c : {DirectionCase{Direction::Input, 3, 0},
+                         DirectionCase{Direction::Output, 0, 4},
+                         DirectionCase{Direction::Duplex, 1, 2}}) {
+        EndpointConfig config{"test", c.direction, c.input, c.output, 48000, Format::Float32, 256};
+        ASSERT_TRUE(backend.open(config));
+        EXPECT_EQ(backend.opened.direction, config.direction);
+        EXPECT_EQ(backend.opened.inputChannels, config.inputChannels);
+        EXPECT_EQ(backend.opened.outputChannels, config.outputChannels);
+        ASSERT_TRUE(backend.close());
+    }
+}
+
+TEST(DirectionContractTest, RejectsAnUnknownDirectionBeforeTheNativeHook) {
+    EndpointBackend backend;
+    EndpointConfig config{"test", static_cast<Direction>(-1), 1, 1, 48000, Format::Float32, 256};
+    const auto result = backend.open(config);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), ErrorType::ConfigurationFailed);
+    EXPECT_EQ(backend.openCalls, 0u);
+}
 }

@@ -10,6 +10,8 @@ export module mka.audio.endpoint;
 import mka.audio.constants;
 
 export namespace mka::audio::core {
+    // Input : inputChannels > 0, outputChannels == 0 ; Output : inverse.
+    // Duplex : les deux comptes sont > 0 ; le backend doit supporter les deux sens.
     enum class Direction { Input, Output, Duplex };
 
     struct StreamCapabilities {

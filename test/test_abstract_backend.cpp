@@ -6,6 +6,8 @@
 
 import mka.audio.backend.abstract;
 
+#include "utils/backend_test_config.hpp"
+
 namespace {
     class BackendImpl : public mka::audio::core::Backend {
     public:
@@ -78,7 +80,7 @@ mka::audio::core::Result execute(
 ) {
     switch (operation) {
         case BackendOperation::Open:
-            return backend.open({});
+            return backend.open(testEndpointConfig());
 
         case BackendOperation::Start:
             return backend.start();
@@ -148,7 +150,7 @@ INSTANTIATE_TEST_SUITE_P(
 //--- TEST RIGHT PIPELINE
 TEST(AbstractBackendTest, TestRightPipeline) {
     BackendImpl backend;
-    ASSERT_TRUE(backend.open({}));
+    ASSERT_TRUE(backend.open(testEndpointConfig()));
     ASSERT_TRUE(backend.start());
     ASSERT_TRUE(backend.stop());
     ASSERT_TRUE(backend.close());
@@ -158,7 +160,7 @@ TEST(AbstractBackendTest, TestRightPipeline) {
 TEST(AbstractBackendTest, TestSetProcessFunctionAllowedStates) {
     BackendImpl backend;
     ASSERT_TRUE(backend.setProcessFunction(nullptr));
-    ASSERT_TRUE(backend.open({}));
+    ASSERT_TRUE(backend.open(testEndpointConfig()));
     ASSERT_TRUE(backend.setProcessFunction(nullptr));
     ASSERT_TRUE(backend.start());
     ASSERT_FALSE(backend.setProcessFunction(nullptr));
@@ -175,7 +177,7 @@ TEST(AbstractBackendTest, TestOpenHookFailure) {
 
     backend.failOpen = true;
 
-    auto res = backend.open({});
+    auto res = backend.open(testEndpointConfig());
 
     ASSERT_FALSE(res);
     EXPECT_EQ(res.error(), mka::audio::core::ErrorType::InvalidState);
@@ -183,14 +185,14 @@ TEST(AbstractBackendTest, TestOpenHookFailure) {
     // open_() a échoué : le backend doit toujours être Closed.
     backend.failOpen = false;
 
-    EXPECT_TRUE(backend.open({}));
+    EXPECT_TRUE(backend.open(testEndpointConfig()));
 }
 
 
 TEST(AbstractBackendTest, TestStartHookFailure) {
     BackendImpl backend;
 
-    ASSERT_TRUE(backend.open({}));
+    ASSERT_TRUE(backend.open(testEndpointConfig()));
 
     backend.failStart = true;
 
@@ -209,7 +211,7 @@ TEST(AbstractBackendTest, TestStartHookFailure) {
 TEST(AbstractBackendTest, TestStopHookFailure) {
     BackendImpl backend;
 
-    ASSERT_TRUE(backend.open({}));
+    ASSERT_TRUE(backend.open(testEndpointConfig()));
     ASSERT_TRUE(backend.start());
 
     backend.failStop = true;
@@ -229,7 +231,7 @@ TEST(AbstractBackendTest, TestStopHookFailure) {
 TEST(AbstractBackendTest, TestCloseHookFailure) {
     BackendImpl backend;
 
-    ASSERT_TRUE(backend.open({}));
+    ASSERT_TRUE(backend.open(testEndpointConfig()));
 
     backend.failClose = true;
 
