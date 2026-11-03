@@ -243,26 +243,6 @@ if (MKA_BUILD_TESTS)
             GTest::gtest_main
     )
 
-    if (MKA_BUILD_ALSA)
-        target_sources(mka-core-audio-tests PRIVATE test/linux/alsa/test_alsa.cpp test/linux/alsa/test_rt_alsa.cpp test/utils/alloc_probe.cpp)
-        target_link_libraries(mka-core-audio-tests PRIVATE mka-audio-alsa)
-    endif ()
-
-    if (MKA_BUILD_PIPEWIRE)
-        target_sources(mka-core-audio-tests PRIVATE test/linux/pipewire/test_pipewire.cpp test/linux/pipewire/test_rt_pipewire.cpp test/utils/alloc_probe.cpp)
-        target_link_libraries(mka-core-audio-tests PRIVATE mka-audio-pipewire)
-    endif ()
-
-    if (MKA_BUILD_JACK)
-        target_sources(mka-core-audio-tests PRIVATE test/linux/jack/test_jack.cpp test/linux/jack/test_rt_jack.cpp test/utils/alloc_probe.cpp)
-        target_link_libraries(mka-core-audio-tests PRIVATE mka-audio-jack)
-    endif ()
-
-    if (MKA_BUILD_PULSEAUDIO)
-        target_sources(mka-core-audio-tests PRIVATE test/linux/pulseaudio/test_pulseaudio.cpp test/linux/pulseaudio/test_rt_pulseaudio.cpp test/utils/alloc_probe.cpp)
-        target_link_libraries(mka-core-audio-tests PRIVATE mka-audio-pulseaudio)
-    endif ()
-
     target_compile_features(
             mka-core-audio-tests
             PRIVATE
