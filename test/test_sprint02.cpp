@@ -285,3 +285,42 @@ TEST(Sprint02Shutdown, StopJoinsInFlightHandlerAndCancelsRemainingDelivery) {
     EXPECT_EQ(gate.failures.load(), 0);
     ASSERT_TRUE(b.close());
 }
+
+TEST(Sprint02Events, AllControlReentryIsRejectedWhileConcurrentStopJoinsHandler) {
+    struct Probe {
+        TransactionBackend* backend;
+        std::atomic<bool> entered{false}, release{false};
+        std::atomic<unsigned> rejected{0};
+        std::atomic<bool> snapshotRead{false};
+    };
+    TransactionBackend b;
+    Probe probe{&b};
+    ASSERT_TRUE(b.setEventHandler(+[](void* user, const Event&) noexcept {
+        auto& p = *static_cast<Probe*>(user);
+        p.entered = true;
+        while (!p.release.load()) std::this_thread::yield();
+        const auto reject = [&](Result r) { if (!r && r.error() == ErrorType::InvalidState) ++p.rejected; };
+        reject(p.backend->open(testEndpointConfig()));
+        reject(p.backend->start());
+        reject(p.backend->stop());
+        reject(p.backend->close());
+        reject(p.backend->setProcessFunction(nullptr));
+        reject(p.backend->setEventHandler(nullptr));
+        p.snapshotRead = p.backend->getEndPoints().empty() && p.backend->status().failed;
+    }, &probe));
+    ASSERT_TRUE(b.open(testEndpointConfig()));
+    ASSERT_TRUE(b.start());
+    b.failStream();
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (!probe.entered.load() && std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+    std::atomic<bool> stopped{false};
+    std::thread controller([&] { stopped = b.stop().has_value(); });
+    std::this_thread::sleep_for(20ms);
+    probe.release = true;
+    controller.join();
+    EXPECT_TRUE(stopped.load());
+    EXPECT_EQ(probe.rejected.load(), 6u);
+    EXPECT_TRUE(probe.snapshotRead.load());
+    ASSERT_TRUE(b.setEventHandler(nullptr));
+    ASSERT_TRUE(b.close());
+}
