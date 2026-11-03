@@ -1482,3 +1482,9 @@ separate hardware cases. See [WASAPI validation](docs/sprint05-validation.md).
 `windows-wasapi-asan` selects MSVC AddressSanitizer (`MKA_SANITIZER=address`),
 without incompatible runtime checks or allocator interposition. The CI validates
 its flags and a negative runtime witness; it does not claim Windows UBSan/TSan/LSan.
+
+WASAPI remains shared-mode in production. The sprint's read-only
+[exclusive assessment](docs/wasapi-exclusive-assessment.md) queries exact native
+formats and periods without reserving a device; hardware results or explicit
+unavailable-device skips are recorded by the Windows suite. Exclusive runtime
+selection requires a separate portable API decision and is not silently enabled.
