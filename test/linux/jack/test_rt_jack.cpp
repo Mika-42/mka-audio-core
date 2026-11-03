@@ -239,3 +239,41 @@ TEST_F(JackRtContractTest, StartRejectsAServerQuantumChangedSinceOpen) {
     EXPECT_EQ(result.error(), mka::audio::core::ErrorType::BufferSizeNotSupported);
     EXPECT_TRUE(backend.close());
 }
+
+TEST_F(JackRtContractTest, AsymmetricDuplexHasOneContextAndSeparateReadableWritablePlanes) {
+    struct DuplexState {
+        std::atomic<unsigned> calls{0};
+        std::atomic<bool> invalid{false};
+    } state;
+    mka::audio::core::JACK backend;
+    auto config = makeConfig(server);
+    config.direction = mka::audio::core::Direction::Duplex;
+    config.inputChannels = 1;
+    ASSERT_TRUE(backend.setProcessFunction([](void* user, const mka::audio::core::AudioProcessContext& ctx) noexcept {
+        auto& s = *static_cast<DuplexState*>(user);
+        if (ctx.frames == 0 || ctx.input.count != 1 || ctx.output.count != 2
+            || !ctx.input.channels || !ctx.output.channels || !ctx.input.channels[0]) {
+            s.invalid.store(true); return;
+        }
+        for (std::uint32_t ch = 0; ch < ctx.output.count; ++ch) {
+            if (!ctx.output.channels[ch] || ctx.output.channels[ch] == ctx.input.channels[0]) {
+                s.invalid.store(true); return;
+            }
+            for (std::uint32_t f = 0; f < ctx.frames; ++f) {
+                if (ctx.output.channels[ch][f] != 0.0f) s.invalid.store(true);
+                ctx.output.channels[ch][f] = ctx.input.channels[0][f];
+            }
+        }
+        s.calls.fetch_add(1);
+    }, &state));
+    ASSERT_TRUE(backend.open(config));
+    ASSERT_TRUE(backend.start());
+    const bool enough = rt_test::waitFor([&] { return state.calls.load() >= 4; });
+    ASSERT_TRUE(backend.stop());
+    const auto stoppedCalls = state.calls.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    EXPECT_EQ(state.calls.load(), stoppedCalls);
+    ASSERT_TRUE(backend.close());
+    EXPECT_TRUE(enough);
+    EXPECT_FALSE(state.invalid.load());
+}

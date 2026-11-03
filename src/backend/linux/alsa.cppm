@@ -97,8 +97,13 @@ export namespace mka::audio::core {
                 }
 
                 // B3 : un seul groupe => start/stop/prepare atomiques, même horloge.
-                linked_ = needCapture && needPlayback
-                          && snd_pcm_link(capture_.pcm, playback_.pcm) == 0;
+                if (needCapture && needPlayback) {
+                    if (snd_pcm_link(capture_.pcm, playback_.pcm) < 0) {
+                        closeHandles();
+                        return std::unexpected{ErrorType::ConfigurationFailed};
+                    }
+                    linked_ = true;
+                }
 
                 config_ = endpointCfg;
                 allocateScratchBuffers(endpointCfg, needCapture, needPlayback);

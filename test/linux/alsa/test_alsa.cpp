@@ -741,3 +741,27 @@ TEST(ALSABackendTest, OpenValidatesTheNullPcmConfigurationAndClosesWithoutHardwa
     ASSERT_TRUE(backend.open(config));
     ASSERT_TRUE(backend.close());
 }
+
+TEST(ALSABackendTest, UnlinkableDuplexIsRejectedAndBothHandlesAreReleased) {
+    mka::audio::core::ALSA backend;
+    mka::audio::core::EndpointConfig config{
+        .id = "null", .direction = mka::audio::core::Direction::Duplex,
+        .inputChannels = 1, .outputChannels = 2, .sampleRate = 48000,
+        .format = mka::audio::core::Format::Float32, .bufferSize = 256
+    };
+    // ALSA's null PCM cannot link capture/playback. Do not silently start two
+    // independent streams when the requested contract is synchronized duplex.
+    const auto result = backend.open(config);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), mka::audio::core::ErrorType::ConfigurationFailed);
+    EXPECT_FALSE(backend.start());
+    config.direction = mka::audio::core::Direction::Output;
+    config.inputChannels = 0;
+    ASSERT_TRUE(backend.open(config));
+    ASSERT_TRUE(backend.close());
+    config.direction = mka::audio::core::Direction::Input;
+    config.inputChannels = 1;
+    config.outputChannels = 0;
+    ASSERT_TRUE(backend.open(config));
+    ASSERT_TRUE(backend.close());
+}
