@@ -1249,3 +1249,8 @@ An ALSA mmap chunk with no frames or an invalid ring range is treated as an xrun
 not retried in a tight transfer loop. Recovery drops/prepares/prefills/restarts the
 stream. Device loss fails immediately; repeated recovery failures terminate the
 stream and leave diagnostics available for the control thread's stop/close cycle.
+
+PipeWire input chunks are checked for alignment, Float32 stride, mapped bounds
+and corruption before exposing borrowed sample pointers. Corrupted chunks count
+as xruns and do not reach the process callback. Rewritten output chunks clear
+stale native flags and describe only the initialized frames.

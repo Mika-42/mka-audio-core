@@ -258,6 +258,7 @@ namespace mka::audio::core {
                 d.chunk->offset = 0;
                 d.chunk->stride = sizeof(float);
                 d.chunk->size = frames * static_cast<std::uint32_t>(sizeof(float));
+                d.chunk->flags = 0;
             }
         }
 
