@@ -231,6 +231,7 @@ if (MKA_BUILD_TESTS)
             test/test_backend_userdata.cpp
             test/test_backend_events.cpp
             test/test_backend_robustness.cpp
+            test/test_sprint02.cpp
             test/test_convert.cpp
             test/test_endpoint_contract.cpp
             test/test_error_contract.cpp
