@@ -45,6 +45,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(cmake/Instrumentation.cmake)
 
+if(MSVC)
+    add_compile_options(/permissive- /Zc:__cplusplus /utf-8)
+    # GoogleTest must use the same dynamic CRT as the application and modules.
+    set(gtest_force_shared_crt ON CACHE BOOL "Match the project MSVC runtime" FORCE)
+endif()
+
 if(MKA_BUILD_TESTS)
     include(FetchContent)
     FetchContent_Declare(googletest

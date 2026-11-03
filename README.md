@@ -1384,3 +1384,17 @@ GoogleTest, native SDKs and backends are excluded from the report. Modules with
 no executable regions are listed separately, without a fabricated percentage.
 Each run uses fresh raw profiles; failed tests fail the target even when a report
 can still be generated. Coverage and sanitizers use separate builds.
+
+On Windows, use Visual Studio 2022 17.14+ with the C++ toolset and Windows SDK,
+CMake 4+ and Ninja. In an x64 Developer Command Prompt:
+
+```bat
+cmake --preset windows-core
+cmake --build --preset windows-core --parallel 2
+ctest --preset windows-core
+```
+
+This SDK-independent configuration uses MSVC `/std:c++latest`, the existing
+C++ module file set and the same dynamic CRT for the library and GoogleTest.
+The Windows CI job runs the same positive and negative core contract tests;
+Linux-only allocator interposition is not part of this Windows preset.
