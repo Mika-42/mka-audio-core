@@ -1421,3 +1421,10 @@ rounded-up frame-count latency hints. Failed or malformed mix-format queries are
 not replaced with invented capabilities. This is a conservative snapshot; open
 revalidates the exact requested configuration. A shared mix layout is not a
 promise that every channel/rate/format combination is supported.
+
+WASAPI opens the requested active render or capture endpoint, or the OS console
+default when its ID is empty. Native acquisition is transactional and runs on the
+COM owner; failed lookups or activation leave the backend closed and reusable.
+Capture and render use separate instances; a duplex request is rejected. Control
+commands use a synchronous stack-resident slot, so native teardown does not need
+to allocate another work item.

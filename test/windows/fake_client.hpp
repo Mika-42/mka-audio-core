@@ -4,12 +4,15 @@
 #include <atomic>
 #include <cstring>
 namespace wasapi_test {
+inline std::atomic<int> liveClients{0};
 class FakeAudioClient : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IAudioClient> {
 public:
     WAVEFORMATEXTENSIBLE mix{};
     HRESULT mixResult=S_OK, periodResult=S_OK;
     REFERENCE_TIME period=100000, minimum=30000;
+    ~FakeAudioClient() { --liveClients; }
     FakeAudioClient() {
+        ++liveClients;
         mix.Format={WAVE_FORMAT_EXTENSIBLE,2,48000,384000,8,32,22};
         mix.Samples.wValidBitsPerSample=32;mix.dwChannelMask=3;mix.SubFormat=KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
     }

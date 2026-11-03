@@ -5,8 +5,8 @@
 #include <windows.h>
 #include <objbase.h>
 #include <condition_variable>
-#include <deque>
 #include <functional>
+#include <optional>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -40,15 +40,20 @@ public:
                 ~Balance() { api.uninitialize(); }
             } balance{api_};
             for (;;) {
-                std::function<void()> task;
+                Command* task = nullptr;
                 {
                     std::unique_lock lock(mutex_);
-                    wake_.wait(lock, [&] { return stop.stop_requested() || !tasks_.empty(); });
-                    if (tasks_.empty() && stop.stop_requested()) break;
-                    task = std::move(tasks_.front());
-                    tasks_.pop_front();
+                    wake_.wait(lock, [&] { return stop.stop_requested() || pending_; });
+                    if (!pending_ && stop.stop_requested()) break;
+                    task = pending_;
+                    pending_ = nullptr;
                 }
-                task(); // packaged_task forwards exceptions to its waiting caller
+                task->execute();
+                {
+                    std::lock_guard lock(mutex_);
+                    completed_ = true;
+                }
+                finished_.notify_one();
             }
         });
         initialized_ = result.get();
@@ -72,21 +77,38 @@ public:
         if (std::this_thread::get_id() == worker_.get_id())
             return std::invoke(std::forward<Function>(function));
         using Return = std::invoke_result_t<Function>;
-        auto task = std::make_shared<std::packaged_task<Return()>>(std::forward<Function>(function));
-        auto result = task->get_future();
-        {
-            std::lock_guard lock(mutex_);
-            tasks_.emplace_back([task] { (*task)(); });
-        }
+        static_assert(!std::is_reference_v<Return>);
+        struct Work final : Command {
+            Function& function;
+            std::optional<std::conditional_t<std::is_void_v<Return>, bool, Return>> value;
+            std::exception_ptr error;
+            explicit Work(Function& f) : function(f) {}
+            void execute() noexcept override {
+                try {
+                    if constexpr (std::is_void_v<Return>) { std::invoke(function); value = true; }
+                    else value.emplace(std::invoke(function));
+                } catch (...) { error = std::current_exception(); }
+            }
+        } task(function);
+        // The synchronous command lives on its caller's stack. Teardown does
+        // not depend on allocating a queue node or a packaged_task.
+        std::lock_guard serial(serial_);
+        std::unique_lock lock(mutex_);
+        completed_ = false;
+        pending_ = &task;
         wake_.notify_one();
-        return result.get();
+        finished_.wait(lock, [&] { return completed_; });
+        if (task.error) std::rethrow_exception(task.error);
+        if constexpr (!std::is_void_v<Return>) return std::move(*task.value);
     }
 private:
+    struct Command { virtual void execute() noexcept = 0; };
     ComApi api_;
     HRESULT initialized_ = E_FAIL;
-    std::mutex mutex_;
-    std::condition_variable wake_;
-    std::deque<std::function<void()>> tasks_;
+    std::mutex serial_, mutex_;
+    std::condition_variable wake_, finished_;
+    Command* pending_ = nullptr;
+    bool completed_ = false;
     std::jthread worker_; // destroyed before synchronization and COM state
 };
 }
