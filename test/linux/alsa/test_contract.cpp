@@ -9,15 +9,18 @@ import mka.audio.backend.alsa;
 
 namespace {
 using namespace mka::audio::core;
-enum class Fault { None, SetRate, ReadRate, RateValue, RateDirection, SetPeriod, SetPeriods, ReadPeriod, PeriodValue, PeriodDirection, ReadBuffer, ShortBuffer, FractionalBuffer, ReadPeriods, PeriodsValue, PeriodsDirection };
+enum class Fault { None, SetRate, ReadRate, RateValue, RateDirection, SetPeriod, SetPeriods, ReadPeriod, PeriodValue, PeriodDirection, ReadBuffer, ShortBuffer, FractionalBuffer, ReadPeriods, PeriodsValue, PeriodsDirection, PlaybackChannels, ChannelsReadback };
 std::atomic<Fault> fault{Fault::None};
 std::atomic<int> liveHandles{0};
 unsigned requestedRate = 0;
 int requestedDirection = 1;
+bool emulateLinkedDevice = false;
+unsigned captureChannels = 0, playbackChannels = 0;
+unsigned unlinkCalls = 0;
 EndpointConfig config() { return {"null", Direction::Output, 0, 2, 48000, Format::Float32, 256}; }
 class AlsaNativeContract : public ::testing::Test {
 protected:
-    void SetUp() override { fault = Fault::None; EXPECT_EQ(liveHandles.load(), 0); }
+    void SetUp() override { fault = Fault::None; emulateLinkedDevice = false; captureChannels = playbackChannels = unlinkCalls = 0; EXPECT_EQ(liveHandles.load(), 0); }
     void TearDown() override { fault = Fault::None; EXPECT_EQ(liveHandles.load(), 0); }
 };
 }
@@ -121,5 +124,68 @@ TEST_F(AlsaNativeContract, ExactPeriodAndThreePeriodRingAreRequired) {
         EXPECT_EQ(result.error(), readFailure ? ErrorType::ConfigurationFailed : ErrorType::BufferSizeNotSupported);
         EXPECT_EQ(liveHandles.load(), 0);
         fault = Fault::None; ASSERT_TRUE(b.open(config())); ASSERT_TRUE(b.close());
+    }
+}
+
+extern "C" {
+int __real_snd_pcm_hw_params_set_channels(snd_pcm_t*, snd_pcm_hw_params_t*, unsigned);
+int __wrap_snd_pcm_hw_params_set_channels(snd_pcm_t* p, snd_pcm_hw_params_t* h, unsigned n) {
+    if (snd_pcm_stream(p) == SND_PCM_STREAM_CAPTURE) captureChannels = n;
+    else {
+        playbackChannels = n;
+        if (fault == Fault::PlaybackChannels) return -EINVAL;
+    }
+    return __real_snd_pcm_hw_params_set_channels(p,h,n);
+}
+int __real_snd_pcm_hw_params_get_channels(const snd_pcm_hw_params_t*, unsigned*);
+int __wrap_snd_pcm_hw_params_get_channels(const snd_pcm_hw_params_t* h, unsigned* n) {
+    const int r = __real_snd_pcm_hw_params_get_channels(h,n);
+    if (r >= 0 && fault == Fault::ChannelsReadback) ++*n;
+    return r;
+}
+int __real_snd_pcm_link(snd_pcm_t*, snd_pcm_t*);
+int __wrap_snd_pcm_link(snd_pcm_t* capture, snd_pcm_t* playback) {
+    // Only the link capability is emulated. Do not start these independent null
+    // streams or claim physical clock synchronization in this test.
+    if (emulateLinkedDevice) return 0;
+    return __real_snd_pcm_link(capture,playback);
+}
+int __real_snd_pcm_unlink(snd_pcm_t*);
+int __wrap_snd_pcm_unlink(snd_pcm_t* pcm) { ++unlinkCalls; return __real_snd_pcm_unlink(pcm); }
+}
+TEST_F(AlsaNativeContract, SupportsIndependentChannelCountsAndReleasesBothDuplexSides) {
+    ALSA b; auto cfg = config(); cfg.direction = Direction::Duplex;
+    cfg.inputChannels = 3; cfg.outputChannels = 1;
+    emulateLinkedDevice = true;
+    ASSERT_TRUE(b.open(cfg));
+    EXPECT_EQ(captureChannels, 3u); EXPECT_EQ(playbackChannels, 1u);
+    EXPECT_EQ(liveHandles.load(), 2);
+    ASSERT_TRUE(b.close());
+    EXPECT_EQ(unlinkCalls, 1u); EXPECT_EQ(liveHandles.load(), 0);
+}
+TEST_F(AlsaNativeContract, DuplexSecondSideAndChannelReadbackFailuresReleaseEverything) {
+    ALSA b; auto cfg = config(); cfg.direction = Direction::Duplex;
+    cfg.inputChannels = 3; cfg.outputChannels = 1;
+    for (const auto injected : {Fault::PlaybackChannels, Fault::ChannelsReadback}) {
+        fault = injected;
+        const auto result = b.open(cfg); ASSERT_FALSE(result);
+        EXPECT_EQ(result.error(), ErrorType::ChannelsNotSupported);
+        EXPECT_EQ(liveHandles.load(), 0);
+    }
+    fault = Fault::None;
+    const auto unsupported = b.open(cfg);
+    ASSERT_FALSE(unsupported); // null PCM does not provide snd_pcm_link
+    EXPECT_EQ(unsupported.error(), ErrorType::ConfigurationFailed);
+    EXPECT_EQ(liveHandles.load(), 0);
+    cfg = config(); ASSERT_TRUE(b.open(cfg)); ASSERT_TRUE(b.close());
+}
+TEST_F(AlsaNativeContract, InputOnlyAndOutputOnlyPreserveTheirChannelCounts) {
+    for (const auto input : {false, true}) {
+        ALSA b; auto cfg = config();
+        cfg.direction = input ? Direction::Input : Direction::Output;
+        cfg.inputChannels = input ? 3 : 0; cfg.outputChannels = input ? 0 : 1;
+        ASSERT_TRUE(b.open(cfg));
+        EXPECT_EQ(input ? captureChannels : playbackChannels, input ? 3u : 1u);
+        ASSERT_TRUE(b.close());
     }
 }
