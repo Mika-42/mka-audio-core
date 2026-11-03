@@ -2,6 +2,8 @@
 
 **mka-core-audio** is a C++ real-time audio framework designed to provide a **backend-agnostic, low-latency audio layer** for professional audio applications such as digital audio workstations (DAWs), synthesizers, audio plugins and signal-processing software.
 
+The public C++ API lives in `mka::audio::core`. Import `mka.audio.backend.abstract` for the backend contract and its re-exported endpoint, process, constants and error types.
+
 The project is built around one central idea:
 
 > **Hide platform and audio-backend differences behind a small, predictable and real-time-safe C++ interface.**
@@ -118,30 +120,31 @@ An endpoint may therefore be:
 * output-only
 * input/output
 
-Conceptually, an endpoint contains an identity, its direction and information describing its capabilities.
+Conceptually, an endpoint contains an identity and optional input/output capabilities. Direction is selected in `EndpointConfig`, not stored as a separate `Endpoint` field.
 
 ```mermaid
 classDiagram
-    class EndpointInfo {
-        +EndpointID id
+    class Endpoint {
+        +string id
         +string name
-        +EndpointDirection direction
-        +EndpointCapabilities capabilities
+        +optional~StreamCapabilities~ input
+        +optional~StreamCapabilities~ output
     }
 
-    class EndpointCapabilities {
-        +sample formats
-        +sample rates
-        +channel counts
-        +buffer sizes
+    class StreamCapabilities {
+        +uint32_t minChannels
+        +uint32_t maxChannels
+        +vector~SampleRate~ sampleRates
+        +vector~Format~ formats
+        +vector~BufferSize~ bufferSizes
     }
 
-    EndpointInfo --> EndpointCapabilities
+    Endpoint --> StreamCapabilities
 ```
 
 The framework does not require the application to construct large backend-specific device objects.
 
-Instead, endpoint identity and capabilities are returned together through `EndpointInfo`.
+Instead, endpoint identity and capabilities are returned together through `Endpoint`.
 
 ---
 
@@ -155,8 +158,8 @@ The general workflow is:
 
 ```mermaid
 flowchart TD
-    LIST["getEndpointList()"]
-    INFO["EndpointInfo"]
+    LIST["getEndPoints()"]
+    INFO["Endpoint"]
     CAP["Endpoint capabilities"]
     CONFIG["Select configuration"]
     OPEN["open(config)"]
@@ -171,7 +174,7 @@ This avoids an unnecessary request for every endpoint and keeps endpoint enumera
 
 The application can therefore:
 
-1. Retrieve the available `EndpointInfo` objects.
+1. Retrieve the available `Endpoint` objects.
 2. Inspect each endpoint's identity, direction and capabilities.
 3. Select an endpoint and configuration.
 4. Open the endpoint.
@@ -207,10 +210,10 @@ The endpoint discovery API exposes all currently available endpoints together wi
 Conceptually:
 
 ```cpp
-std::vector<EndpointInfo> getEndpointList();
+std::vector<Endpoint> getEndPoints();
 ```
 
-Each `EndpointInfo` contains the endpoint identity, direction and capabilities. No additional `getEndpointInfo()` call is required for normal endpoint discovery.
+Each `Endpoint` contains the endpoint identity, direction and capabilities. No additional `getEndpoint()` call is required for normal endpoint discovery.
 
 The returned information is descriptive: it allows the application to choose a valid configuration before calling `open()`.
 
@@ -234,13 +237,16 @@ Typical parameters include:
 Conceptually:
 
 ```cpp
-DeviceConfig config{
-    .endpointID      = "...",
-    .sampleRate      = 48000,
-    .bufferSize      = 256,
-    .inputChannels   = 2,
-    .outputChannels  = 2,
-    .sampleFormat    = SampleFormat::Float32
+using namespace mka::audio::core;
+
+EndpointConfig config{
+    .id             = "...", // Endpoint::id returned by getEndPoints()
+    .direction      = Direction::Output,
+    .inputChannels  = 0,
+    .outputChannels = 2,
+    .sampleRate     = 48000,
+    .format         = Format::Float32,
+    .bufferSize     = 256
 };
 ```
 
@@ -262,8 +268,8 @@ sequenceDiagram
     participant API as mka-core-audio
     participant Backend
 
-    App->>API: getEndpointList()
-    API-->>App: EndpointInfo + capabilities
+    App->>API: getEndPoints()
+    API-->>App: Endpoint + capabilities
 
     App->>API: open(config)
     API->>Backend: Validate configuration
@@ -458,7 +464,7 @@ Once a stream is running, audio processing is performed through a user-defined c
 Conceptually:
 
 ```cpp
-setCallback(callback);
+setProcessFunction(callback, userData);
 ```
 
 The callback receives the audio buffers for the current processing block.
@@ -466,16 +472,20 @@ The callback receives the audio buffers for the current processing block.
 A simplified representation is:
 
 ```cpp
-struct Buffer
-{
-    float** inputs;
-    float** outputs;
-
-    uint32_t inputCount;
-    uint32_t outputCount;
-
-    uint32_t frames;
+struct InputBuffer {
+    const float* const* channels;
+    std::uint32_t count;
 };
+struct OutputBuffer {
+    float* const* channels;
+    std::uint32_t count;
+};
+struct AudioProcessContext {
+    InputBuffer input;
+    OutputBuffer output;
+    std::uint32_t frames;
+};
+using ProcessFunction = void (*)(void* user, const AudioProcessContext&) noexcept;
 ```
 
 The callback is executed from the real-time audio processing context.
@@ -617,7 +627,7 @@ flowchart TD
 ```
 
 The project keeps the supported framework-level values centralized rather than duplicating them across every backend implementation.
-The backend reports the subset supported by each endpoint through `EndpointInfo`.
+The backend reports the subset supported by each endpoint through `Endpoint`.
 
 This allows backend implementations to use the same definitions when reporting or validating capabilities.
 
@@ -795,12 +805,12 @@ Instead, it should only interact with framework-level concepts:
 
 ```cpp
 Endpoint
-EndpointInfo
-DeviceConfig
-Buffer
-SampleFormat
+StreamCapabilities
+EndpointConfig
+AudioProcessContext
+Format
 Result
-Callback
+ProcessFunction
 ```
 
 The separation can be represented as:

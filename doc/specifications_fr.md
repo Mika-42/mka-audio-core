@@ -30,18 +30,18 @@ Core Audio repose sur trois concepts principaux :
 ```text
 Backend
    │
-   ├── Devices
+   ├── Endpoints
    │
    └── Stream
         ├── Input Channels
         └── Output Channels
 ```
 
-### Device
+### Endpoint
 
 Un device représente une ressource ou un point d'accès audio sélectionnable exposé par un backend.
 
-Il ne représente pas nécessairement du matériel physique. Le backend traduit ses propres concepts vers le modèle générique `Device`.
+Il ne représente pas nécessairement du matériel physique. Le backend traduit ses propres concepts vers le modèle générique `Endpoint`.
 
 ### Stream
 
@@ -61,17 +61,17 @@ Les concepts propres aux backends, tels que les channels PCM d’ALSA, les ports
 
 La découverte des périphériques et l’ouverture d’un stream sont deux opérations distinctes.
 
-L’application commence par récupérer les périphériques disponibles :
+L’API publique se trouve dans `mka::audio::core` et est réexportée par
+`mka.audio.backend.abstract`. La découverte retourne identité et capacités ensemble :
 
 ```cpp
-getDevices()
+std::vector<Endpoint> Backend::getEndPoints() const noexcept;
 ```
 
-Elle peut ensuite récupérer les capacités d’un périphérique donné :
-
-```cpp
-getCapabilities(device)
-```
+`Endpoint` contient `std::string id`, `std::string name` et
+`std::optional<StreamCapabilities> input` / `output`. Il n’existe pas de méthode
+séparée de consultation des capacités. Chaque `StreamCapabilities` contient
+`minChannels`, `maxChannels`, `sampleRates`, `formats` et `bufferSizes`.
 
 Les capacités peuvent notamment décrire :
 
@@ -90,14 +90,17 @@ C’est l’application qui choisit la configuration souhaitée.
 Par exemple :
 
 ```cpp
-StreamConfig {
-    device,
-    sampleRate,
-    bufferSize,
-    format,
-    inputChannels,
-    outputChannels
-}
+using namespace mka::audio::core;
+
+EndpointConfig config{
+    .id = "...",
+    .direction = Direction::Output,
+    .inputChannels = 0,
+    .outputChannels = 2,
+    .sampleRate = 48000,
+    .format = Format::Float32,
+    .bufferSize = 256
+};
 ```
 
 Cette configuration constitue une demande explicite adressée au backend.
@@ -146,7 +149,7 @@ Le backend ne doit pas remplacer silencieusement la configuration par une autre,
 
 Cela garantit que la configuration réellement utilisée est connue et contrôlée par l’application.
 
-L’application peut utiliser `getCapabilities()` avant `open()` afin de vérifier que la configuration demandée est supportée.
+L’application peut consulter les `Endpoint` retournés par `getEndPoints()` avant `open()` afin de vérifier que la configuration demandée est supportée.
 
 Le backend doit néanmoins effectuer une nouvelle validation lors de `open()`, car les capacités peuvent avoir changé entre leur découverte et l’ouverture du stream.
 
@@ -173,8 +176,7 @@ CLOSED
 L’interface publique minimale est :
 
 ```cpp
-getDevices()
-getCapabilities(device)
+getEndPoints()
 
 open(config)
 start()
@@ -205,14 +207,20 @@ Core Audio fournit les buffers audio aux composants de niveau supérieur.
 Un buffer générique peut être représenté ainsi :
 
 ```cpp
-struct AudioBuffer {
-    float* const* input;
-    float* const* output;
-
-    uint32_t inputChannels;
-    uint32_t outputChannels;
-    uint32_t frames;
+struct InputBuffer {
+    const float* const* channels;
+    std::uint32_t count;
 };
+struct OutputBuffer {
+    float* const* channels;
+    std::uint32_t count;
+};
+struct AudioProcessContext {
+    InputBuffer input;
+    OutputBuffer output;
+    std::uint32_t frames;
+};
+using ProcessFunction = void (*)(void* user, const AudioProcessContext&) noexcept;
 ```
 
 La représentation interne peut varier selon les backends.
@@ -335,12 +343,11 @@ Core Audio ne doit exposer aucun type ou concept spécifique à un backend.
 L’interface publique doit utiliser des concepts génériques tels que :
 
 ```cpp
-DeviceID
-DeviceInfo
-DeviceCapabilities
-StreamConfig
-AudioBuffer
-SampleFormat
+Endpoint
+StreamCapabilities
+EndpointConfig
+AudioProcessContext
+Format
 Error
 ```
 
