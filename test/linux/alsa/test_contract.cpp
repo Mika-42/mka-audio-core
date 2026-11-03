@@ -9,7 +9,7 @@ import mka.audio.backend.alsa;
 
 namespace {
 using namespace mka::audio::core;
-enum class Fault { None, SetRate, ReadRate, RateValue, RateDirection };
+enum class Fault { None, SetRate, ReadRate, RateValue, RateDirection, SetPeriod, SetPeriods, ReadPeriod, PeriodValue, PeriodDirection, ReadBuffer, ShortBuffer, FractionalBuffer, ReadPeriods, PeriodsValue, PeriodsDirection };
 std::atomic<Fault> fault{Fault::None};
 std::atomic<int> liveHandles{0};
 unsigned requestedRate = 0;
@@ -68,5 +68,58 @@ TEST_F(AlsaNativeContract, RejectsRateSetAndReadbackFailuresWithoutLeakingAndCan
         EXPECT_EQ(b.start().error(), ErrorType::InvalidState);
         fault = Fault::None;
         ASSERT_TRUE(b.open(config())); ASSERT_TRUE(b.close());
+    }
+}
+
+extern "C" {
+int __real_snd_pcm_hw_params_set_period_size(snd_pcm_t*, snd_pcm_hw_params_t*, snd_pcm_uframes_t, int);
+int __wrap_snd_pcm_hw_params_set_period_size(snd_pcm_t* p, snd_pcm_hw_params_t* h, snd_pcm_uframes_t n, int d) {
+    if (fault == Fault::SetPeriod) return -EINVAL;
+    return __real_snd_pcm_hw_params_set_period_size(p,h,n,d);
+}
+int __real_snd_pcm_hw_params_set_periods(snd_pcm_t*, snd_pcm_hw_params_t*, unsigned, int);
+int __wrap_snd_pcm_hw_params_set_periods(snd_pcm_t* p, snd_pcm_hw_params_t* h, unsigned n, int d) {
+    if (fault == Fault::SetPeriods) return -EINVAL;
+    return __real_snd_pcm_hw_params_set_periods(p,h,n,d);
+}
+int __real_snd_pcm_hw_params_get_period_size(const snd_pcm_hw_params_t*, snd_pcm_uframes_t*, int*);
+int __wrap_snd_pcm_hw_params_get_period_size(const snd_pcm_hw_params_t* h, snd_pcm_uframes_t* n, int* d) {
+    const int r = __real_snd_pcm_hw_params_get_period_size(h,n,d);
+    if (fault == Fault::ReadPeriod) return -EIO;
+    if (r >= 0 && fault == Fault::PeriodValue) ++*n;
+    if (r >= 0 && fault == Fault::PeriodDirection && d) *d = 1;
+    return r;
+}
+int __real_snd_pcm_hw_params_get_buffer_size(const snd_pcm_hw_params_t*, snd_pcm_uframes_t*);
+int __wrap_snd_pcm_hw_params_get_buffer_size(const snd_pcm_hw_params_t* h, snd_pcm_uframes_t* n) {
+    const int r = __real_snd_pcm_hw_params_get_buffer_size(h,n);
+    if (fault == Fault::ReadBuffer) return -EIO;
+    if (r >= 0 && fault == Fault::ShortBuffer) *n = 1;
+    if (r >= 0 && fault == Fault::FractionalBuffer) --*n;
+    return r;
+}
+int __real_snd_pcm_hw_params_get_periods(const snd_pcm_hw_params_t*, unsigned*, int*);
+int __wrap_snd_pcm_hw_params_get_periods(const snd_pcm_hw_params_t* h, unsigned* n, int* d) {
+    const int r = __real_snd_pcm_hw_params_get_periods(h,n,d);
+    if (fault == Fault::ReadPeriods) return -EIO;
+    if (r >= 0 && fault == Fault::PeriodsValue) ++*n;
+    if (r >= 0 && fault == Fault::PeriodsDirection && d) *d = 1;
+    return r;
+}
+}
+TEST_F(AlsaNativeContract, ExactPeriodAndThreePeriodRingAreRequired) {
+    for (const auto size : {64u, 256u, 4096u}) {
+        ALSA b; auto cfg = config(); cfg.bufferSize = size;
+        ASSERT_TRUE(b.open(cfg)); ASSERT_TRUE(b.close());
+    }
+    for (const auto injected : {Fault::SetPeriod, Fault::SetPeriods, Fault::ReadPeriod,
+        Fault::PeriodValue, Fault::PeriodDirection, Fault::ReadBuffer, Fault::ShortBuffer,
+        Fault::FractionalBuffer, Fault::ReadPeriods, Fault::PeriodsValue, Fault::PeriodsDirection}) {
+        ALSA b; fault = injected;
+        const auto result = b.open(config()); ASSERT_FALSE(result);
+        const bool readFailure = injected == Fault::ReadPeriod || injected == Fault::ReadBuffer || injected == Fault::ReadPeriods;
+        EXPECT_EQ(result.error(), readFailure ? ErrorType::ConfigurationFailed : ErrorType::BufferSizeNotSupported);
+        EXPECT_EQ(liveHandles.load(), 0);
+        fault = Fault::None; ASSERT_TRUE(b.open(config())); ASSERT_TRUE(b.close());
     }
 }

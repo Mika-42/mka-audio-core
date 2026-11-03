@@ -1239,3 +1239,8 @@ Dispatcher shutdown requests cancellation and wakes its stop-token-aware wait
 immediately. It joins an in-flight handler before returning and cancels pending
 delivery. Handlers must finish promptly: a blocking user handler cannot have a
 hard shutdown deadline without abandoning live user data. No thread is detached.
+
+ALSA requires an exact period of `bufferSize` frames and a ring of exactly three
+whole periods. It reads back the rate, period, period count and ring size after
+applying hardware parameters. Fractional/nearest periods or a different ring
+return `BufferSizeNotSupported`; failed native readbacks return `ConfigurationFailed`.
