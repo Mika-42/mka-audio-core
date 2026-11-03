@@ -43,6 +43,8 @@ set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(cmake/Instrumentation.cmake)
+
 if(MKA_BUILD_TESTS)
     include(FetchContent)
     FetchContent_Declare(googletest
@@ -260,11 +262,10 @@ if (MKA_BUILD_TESTS)
 
     if (MKA_BUILD_ALSA)
 
-        add_executable(mka-audio-alsa-tests
-                test/linux/alsa/test_alsa.cpp
-                test/linux/alsa/test_rt_alsa.cpp
-                test/utils/alloc_probe.cpp
-        )
+        add_executable(mka-audio-alsa-tests test/linux/alsa/test_alsa.cpp)
+        if(MKA_ALLOCATOR_TESTS)
+            target_sources(mka-audio-alsa-tests PRIVATE test/linux/alsa/test_rt_alsa.cpp test/utils/alloc_probe.cpp)
+        endif()
 
         target_link_libraries(mka-audio-alsa-tests
                 PRIVATE
@@ -291,11 +292,10 @@ if (MKA_BUILD_TESTS)
 
     if (MKA_BUILD_PIPEWIRE)
 
-        add_executable(mka-audio-pipewire-tests
-                test/linux/pipewire/test_pipewire.cpp
-                test/linux/pipewire/test_rt_pipewire.cpp
-                test/utils/alloc_probe.cpp
-        )
+        add_executable(mka-audio-pipewire-tests test/linux/pipewire/test_pipewire.cpp)
+        if(MKA_ALLOCATOR_TESTS)
+            target_sources(mka-audio-pipewire-tests PRIVATE test/linux/pipewire/test_rt_pipewire.cpp test/utils/alloc_probe.cpp)
+        endif()
 
         target_link_libraries(mka-audio-pipewire-tests
                 PRIVATE
@@ -328,11 +328,10 @@ if (MKA_BUILD_TESTS)
 
     if (MKA_BUILD_JACK)
 
-        add_executable(mka-audio-jack-tests
-                test/linux/jack/test_jack.cpp
-                test/linux/jack/test_rt_jack.cpp
-                test/utils/alloc_probe.cpp
-        )
+        add_executable(mka-audio-jack-tests test/linux/jack/test_jack.cpp)
+        if(MKA_ALLOCATOR_TESTS)
+            target_sources(mka-audio-jack-tests PRIVATE test/linux/jack/test_rt_jack.cpp test/utils/alloc_probe.cpp)
+        endif()
 
         target_link_libraries(mka-audio-jack-tests
                 PRIVATE
@@ -359,11 +358,10 @@ if (MKA_BUILD_TESTS)
 
     if (MKA_BUILD_PULSEAUDIO)
 
-        add_executable(mka-audio-pulseaudio-tests
-                test/linux/pulseaudio/test_pulseaudio.cpp
-                test/linux/pulseaudio/test_rt_pulseaudio.cpp
-                test/utils/alloc_probe.cpp
-        )
+        add_executable(mka-audio-pulseaudio-tests test/linux/pulseaudio/test_pulseaudio.cpp)
+        if(MKA_ALLOCATOR_TESTS)
+            target_sources(mka-audio-pulseaudio-tests PRIVATE test/linux/pulseaudio/test_rt_pulseaudio.cpp test/utils/alloc_probe.cpp)
+        endif()
 
         target_link_libraries(mka-audio-pulseaudio-tests
                 PRIVATE
@@ -445,7 +443,7 @@ if (MKA_BUILD_TESTS AND MKA_BUILD_PULSEAUDIO)
 endif()
 
 # Allocation interposition and sanitizer runtimes are verified separately.
-if (MKA_BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_CXX_FLAGS MATCHES "-fsanitize=")
+if (MKA_BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND MKA_ALLOCATOR_TESTS)
     add_executable(mka-audio-alloc-probe-tests test/test_alloc_probe.cpp test/utils/alloc_probe.cpp)
     target_link_libraries(mka-audio-alloc-probe-tests PRIVATE GTest::gtest_main)
     gtest_discover_tests(mka-audio-alloc-probe-tests TEST_PREFIX "probe." PROPERTIES TIMEOUT 10)

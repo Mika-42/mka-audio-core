@@ -1331,3 +1331,10 @@ with native backends also execute integration tests on the private virtual
 servers, with physical hardware cases excluded. The harness owns its D-Bus
 session as well as the audio servers, so it supports WirePlumber versions that
 require a session bus without borrowing the host session.
+
+Use the `asan` configure/build/test presets for combined ASan/UBSan checks of
+the core. `MKA_SANITIZER=address-undefined` applies to compilation and linking;
+UBSan errors fail the run. Leak detection stays enabled. Allocation-interposition
+and native RT probe sources are omitted in sanitizer builds; their ordinary
+build remains the place to verify allocation counts. An unknown sanitizer mode
+is a configuration error.
