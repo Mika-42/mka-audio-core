@@ -455,3 +455,7 @@ endif()
 if(MKA_BUILD_TESTS)
     set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ClassifyTests.cmake")
 endif()
+
+if(MKA_ENABLE_COVERAGE)
+    include(cmake/Coverage.cmake)
+endif()
