@@ -1309,3 +1309,16 @@ fixture `hw:1,0`. Missing fixtures are explicit GoogleTest skips. `manual` marks
 disabled interactive scenarios; `rt` identifies callback/allocation checks and
 `nonrt` the pure control tests. For example, use `ctest -L unit` or run native
 checks with `ctest -L integration -LE hardware` inside the virtual harness.
+
+For the same SDK-independent C++26 configuration used by CI, install Clang 19
+with libstdc++ 14, CMake 4+ and Ninja, then run:
+
+```sh
+CXX=clang++-19 cmake --preset core
+cmake --build --preset core --parallel 2
+ctest --preset core
+```
+
+The preset disables all native backends. A library-only build with
+`MKA_BUILD_TESTS=OFF` does not fetch or configure GoogleTest. CI uploads CTest's
+JUnit results and logs even when the test step fails.

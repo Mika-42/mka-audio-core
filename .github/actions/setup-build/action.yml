@@ -1,0 +1,14 @@
+name: C++26 build tools
+description: Install Clang 19, libstdc++ 14, CMake 4 and Ninja.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install compiler and standard library
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends clang-19 clang-tools-19 llvm-19 g++-14
+        python -m pip install 'cmake>=4.0,<5' ninja
