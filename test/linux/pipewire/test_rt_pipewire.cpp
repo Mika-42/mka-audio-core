@@ -230,3 +230,18 @@ TEST_F(PipeWireRtContractTest, DestroyWhileRunningIsSafe) {
         EXPECT_EQ(state.calls.load(), atDestroy) << "callback appelé après destruction";
     }
 }
+
+TEST_F(PipeWireRtContractTest, OpenNegotiatesWithoutCallingTheUser) {
+    if (!output.available) GTEST_SKIP() << "aucune sortie PipeWire";
+    rt_test::StopContractState state;
+    mka::audio::core::PipeWire pw;
+    ASSERT_TRUE(pw.setProcessFunction(countCallback, &state));
+    ASSERT_TRUE(pw.open(makeOutputConfig()));
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    EXPECT_EQ(state.calls.load(), 0);
+    ASSERT_TRUE(pw.start());
+    const bool enough = rt_test::waitFor([&] { return state.calls.load() >= 4; });
+    ASSERT_TRUE(pw.stop());
+    EXPECT_TRUE(enough);
+    ASSERT_TRUE(pw.close());
+}

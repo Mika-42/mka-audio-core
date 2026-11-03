@@ -403,3 +403,11 @@ if (MKA_BUILD_TESTS)
 
     endif ()
 endif ()
+
+if (MKA_BUILD_TESTS AND MKA_BUILD_PULSEAUDIO)
+    add_executable(mka-audio-pulse-configuration-tests test/linux/pulseaudio/test_configuration.cpp)
+    target_link_libraries(mka-audio-pulse-configuration-tests PRIVATE
+            mka-audio-pulseaudio GTest::gtest_main PkgConfig::PULSEAUDIO)
+    target_link_options(mka-audio-pulse-configuration-tests PRIVATE "-Wl,--wrap=pa_stream_get_sample_spec")
+    gtest_discover_tests(mka-audio-pulse-configuration-tests TEST_PREFIX "pulseaudio.config.")
+endif ()

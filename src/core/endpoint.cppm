@@ -33,6 +33,9 @@ export namespace mka::audio::core {
         std::optional<StreamCapabilities> output;
     };
 
+    // Demande immuable pendant l’ouverture : ni approximation de fréquence,
+    // ni substitution de format/canaux. open() vérifie le flux natif avant succès.
+    // Les capacités de découverte ne remplacent jamais cette validation.
     struct EndpointConfig {
         std::string id;
         Direction direction;

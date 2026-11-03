@@ -48,6 +48,7 @@ namespace mka::audio::core {
         static void onStateChanged(void *data, pw_stream_state old, pw_stream_state state, const char *error);
 
         static void onProcess(void *data);
+        static void onParamChanged(void* data, std::uint32_t id, const spa_pod* param);
 
         void teardownStream() noexcept;
 
@@ -58,6 +59,9 @@ namespace mka::audio::core {
 
         Direction direction_ = Direction::Output;
         std::uint32_t channels_ = 0;
+        SampleRate requestedRate_ = 0;
+        bool formatReady_ = false; // protected by the native loop lock
+        std::optional<ErrorType> formatError_;
 
         // Préalloués dans open_ : onProcess ne doit jamais allouer.
         std::vector<const float *> inChannels_;
@@ -111,6 +115,25 @@ namespace mka::audio::core {
                 break;
         }
         // Réveille start_()/stop_() qui attendent une transition d'état.
+        pw_thread_loop_signal(self->loop_, false);
+    }
+
+    void PipeWire::onParamChanged(void* data, const std::uint32_t id, const spa_pod* param) {
+        if (id != SPA_PARAM_Format || !param) return;
+        auto* self = static_cast<PipeWire*>(data);
+        spa_audio_info_raw actual{};
+        self->formatReady_ = true;
+        self->formatError_.reset();
+        if (spa_format_audio_raw_parse(param, &actual) < 0 || actual.format != SPA_AUDIO_FORMAT_F32P)
+            self->formatError_ = ErrorType::FormatNotSupported;
+        else if (actual.rate != self->requestedRate_)
+            self->formatError_ = ErrorType::SampleRateNotSupported;
+        else if (actual.channels != self->channels_)
+            self->formatError_ = ErrorType::ChannelsNotSupported;
+        if (self->formatError_ && self->active_.load(std::memory_order_acquire)) {
+            self->processEnabled_.store(false, std::memory_order_seq_cst);
+            self->notifyFailed();
+        }
         pw_thread_loop_signal(self->loop_, false);
     }
 
@@ -265,6 +288,9 @@ namespace mka::audio::core {
             return std::unexpected{ErrorType::ChannelsNotSupported};
 
         channels_ = channels;
+        requestedRate_ = endpointCfg.sampleRate;
+        formatReady_ = false;
+        formatError_.reset();
         inChannels_.assign(channels, nullptr);
         outChannels_.assign(channels, nullptr);
 
@@ -311,6 +337,7 @@ namespace mka::audio::core {
         static constexpr pw_stream_events streamEvents = {
             .version = PW_VERSION_STREAM_EVENTS,
             .state_changed = &PipeWire::onStateChanged,
+            .param_changed = &PipeWire::onParamChanged,
             .process = &PipeWire::onProcess,
         };
 
@@ -343,7 +370,7 @@ namespace mka::audio::core {
 
         const auto pwDirection = direction_ == Direction::Input ? PW_DIRECTION_INPUT : PW_DIRECTION_OUTPUT;
         const auto flags = static_cast<pw_stream_flags>(
-            PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS);
+            PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS | PW_STREAM_FLAG_INACTIVE);
 
         if (pw_stream_connect(stream_, pwDirection, PW_ID_ANY, flags, params, 1) < 0) {
             pw_stream_destroy(stream_);
@@ -353,6 +380,42 @@ namespace mka::audio::core {
             return std::unexpected{ErrorType::ConfigurationFailed};
         }
 
+        pw_thread_loop_lock(loop_);
+        if (pw_thread_loop_start(loop_) < 0) {
+            pw_thread_loop_unlock(loop_);
+            teardownStream();
+            return std::unexpected{ErrorType::ConfigurationFailed};
+        }
+        // PipeWire negotiates formats only once linked/active. Native processing
+        // may run during this handshake, but processEnabled_ remains false: no
+        // user callback can escape open(). Suspend again before returning.
+        if (pw_stream_set_active(stream_, true) < 0) {
+            pw_thread_loop_unlock(loop_);
+            teardownStream();
+            return std::unexpected{ErrorType::ConfigurationFailed};
+        }
+        const auto deadline = std::chrono::steady_clock::now() + kStartTimeout;
+        bool connected = false;
+        while (std::chrono::steady_clock::now() < deadline) {
+            const auto state = pw_stream_get_state(stream_, nullptr);
+            if ((state == PW_STREAM_STATE_PAUSED || state == PW_STREAM_STATE_STREAMING)
+                && formatReady_) { connected = true; break; }
+            if (state == PW_STREAM_STATE_ERROR || failed_.load(std::memory_order_acquire)) break;
+            pw_thread_loop_timed_wait(loop_, 1);
+        }
+        const auto error = formatError_;
+        if (pw_stream_set_active(stream_, false) < 0) connected = false;
+        while (connected && pw_stream_get_state(stream_, nullptr) == PW_STREAM_STATE_STREAMING
+               && std::chrono::steady_clock::now() < deadline)
+            pw_thread_loop_timed_wait(loop_, 1);
+        connected = connected && pw_stream_get_state(stream_, nullptr) == PW_STREAM_STATE_PAUSED;
+        pw_thread_loop_unlock(loop_);
+        waitProcessQuiescent();
+        if (!connected || error) {
+            teardownStream();
+            return std::unexpected{error.value_or(ErrorType::EndpointUnavailable)};
+        }
+        // The native stream is verified but inactive until start().
         return {};
     }
 
@@ -366,9 +429,10 @@ namespace mka::audio::core {
 
         pw_thread_loop_lock(loop_);
 
-        if (pw_thread_loop_start(loop_) < 0) {
+        if (formatError_) {
+            const auto error = *formatError_;
             pw_thread_loop_unlock(loop_);
-            return std::unexpected{ErrorType::ConfigurationFailed};
+            return std::unexpected{error};
         }
 
         // callback/userData sont figés tant que le backend est Open/Running.
@@ -379,7 +443,6 @@ namespace mka::audio::core {
             pw_stream_set_active(stream_, false);
             pw_thread_loop_unlock(loop_);
             waitProcessQuiescent();
-            pw_thread_loop_stop(loop_);
             return std::unexpected{ErrorType::ConfigurationFailed};
         }
 
@@ -417,7 +480,6 @@ namespace mka::audio::core {
         pw_stream_set_active(stream_, false);
         pw_thread_loop_unlock(loop_);
         waitProcessQuiescent();
-        pw_thread_loop_stop(loop_);
 
         return std::unexpected{hasFailed ? ErrorType::ConfigurationFailed : ErrorType::EndpointUnavailable};
     }
@@ -438,12 +500,8 @@ namespace mka::audio::core {
             }
             pw_thread_loop_unlock(loop_);
         }
-        // Attend la fin d'un éventuel onProcess en cours avant d'arrêter la boucle.
+        // Attend la fin d’un éventuel onProcess ; la boucle garde le flux natif ouvert.
         waitProcessQuiescent();
-        if (loop_) {
-            // Demande l'arrêt de la boucle/thread audio.
-            pw_thread_loop_stop(loop_);
-        }
         return {};
     }
 

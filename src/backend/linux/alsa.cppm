@@ -446,6 +446,19 @@ export namespace mka::audio::core {
 
             if (snd_pcm_hw_params(pcm, hw) < 0) return fail(ErrorType::ConfigurationFailed);
 
+            snd_pcm_format_t actualFormat = SND_PCM_FORMAT_UNKNOWN;
+            unsigned actualChannels = 0;
+            unsigned actualRate = 0;
+            int rateDirection = 0;
+            if (snd_pcm_hw_params_get_format(hw, &actualFormat) < 0
+                || snd_pcm_hw_params_get_channels(hw, &actualChannels) < 0
+                || snd_pcm_hw_params_get_rate(hw, &actualRate, &rateDirection) < 0)
+                return fail(ErrorType::ConfigurationFailed);
+            if (actualFormat != chosen->alsa) return fail(ErrorType::FormatNotSupported);
+            if (actualChannels != channels) return fail(ErrorType::ChannelsNotSupported);
+            if (actualRate != cfg.sampleRate || rateDirection != 0)
+                return fail(ErrorType::SampleRateNotSupported);
+
             snd_pcm_uframes_t period = 0;
             snd_pcm_uframes_t buffer = 0;
             if (snd_pcm_hw_params_get_period_size(hw, &period, &dir) < 0
