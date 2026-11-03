@@ -33,3 +33,26 @@ jobs:
           path: |
             junit-windows-core.xml
             build/windows-core/Testing/Temporary/LastTest.log
+
+  windows-wasapi:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - run: python -m pip install 'cmake>=4.0,<5' ninja
+      - run: cmake --preset windows-wasapi
+      - run: cmake --build --preset windows-wasapi --parallel 2
+      - run: ctest --preset windows-wasapi --output-junit "${{ github.workspace }}/junit-wasapi.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-wasapi-tests
+          path: |
+            junit-wasapi.xml
+            build/windows-wasapi/Testing/Temporary/LastTest.log

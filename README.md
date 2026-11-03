@@ -1398,3 +1398,9 @@ This SDK-independent configuration uses MSVC `/std:c++latest`, the existing
 C++ module file set and the same dynamic CRT for the library and GoogleTest.
 The Windows CI job runs the same positive and negative core contract tests;
 Linux-only allocator interposition is not part of this Windows preset.
+
+`MKA_BUILD_WASAPI` selects the Windows-only `mka-audio-wasapi` target, linked to
+`ole32` and `uuid`. Use the `windows-wasapi` configure/build/test presets for this
+target. Import `mka.audio.backend.wasapi` for `mka::audio::core::Wasapi`; the
+original empty module name `wasapi` remains available as a compatibility import.
+Requesting WASAPI on a non-Windows target fails explicitly during configuration.

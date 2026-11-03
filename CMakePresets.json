@@ -22,7 +22,8 @@
         "BUILD_GMOCK": "OFF",
         "INSTALL_GTEST": "OFF",
         "MKA_SANITIZER": "none",
-        "MKA_ENABLE_COVERAGE": "OFF"
+        "MKA_ENABLE_COVERAGE": "OFF",
+        "MKA_BUILD_WASAPI": "OFF"
       }
     },
     {
@@ -62,6 +63,14 @@
         "CMAKE_CXX_COMPILER": "cl",
         "CMAKE_CXX_FLAGS": "/std:c++latest"
       }
+    },
+    {
+      "name": "windows-wasapi",
+      "inherits": "windows-core",
+      "displayName": "Windows WASAPI and core",
+      "cacheVariables": {
+        "MKA_BUILD_WASAPI": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -87,6 +96,10 @@
     {
       "name": "windows-core",
       "configurePreset": "windows-core"
+    },
+    {
+      "name": "windows-wasapi",
+      "configurePreset": "windows-wasapi"
     }
   ],
   "testPresets": [
@@ -151,6 +164,22 @@
     {
       "name": "windows-core",
       "configurePreset": "windows-core",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "^unit$"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "jobs": 2
+      }
+    },
+    {
+      "name": "windows-wasapi",
+      "configurePreset": "windows-wasapi",
       "output": {
         "outputOnFailure": true
       },
