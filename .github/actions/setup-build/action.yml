@@ -14,7 +14,7 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y --no-install-recommends clang-19 clang-tools-19 llvm-19 g++-14
+        sudo apt-get install -y --no-install-recommends clang-19 clang-tools-19 libclang-rt-19-dev llvm-19 g++-14
         python -m pip install 'cmake>=4.0,<5' ninja
     - name: Install Linux audio SDKs and virtual servers
       if: inputs.native == 'true'
