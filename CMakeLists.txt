@@ -39,7 +39,16 @@ option(MKA_BUILD_PULSEAUDIO
 # Global C++ configuration
 # ============================================================
 
-set(CMAKE_CXX_STANDARD 26)
+# CMake currently maps MSVC's /std:c++latest to its cxx_std_23 feature.
+# Keep that actual draft language mode instead of claiming an unknown CMake feature.
+set(MKA_CXX_STANDARD 26)
+if(MSVC)
+    if(MSVC_VERSION LESS 1944)
+        message(FATAL_ERROR "Windows builds require Visual Studio 2022 17.14+ (/std:c++latest)")
+    endif()
+    set(MKA_CXX_STANDARD 23)
+endif()
+set(CMAKE_CXX_STANDARD ${MKA_CXX_STANDARD})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -84,7 +93,7 @@ target_sources(mka-core-audio
 target_compile_features(
         mka-core-audio
         PUBLIC
-        cxx_std_26
+        cxx_std_${MKA_CXX_STANDARD}
 )
 
 # ============================================================
@@ -115,7 +124,7 @@ if (MKA_BUILD_ALSA)
     target_compile_features(
             mka-audio-alsa
             PRIVATE
-            cxx_std_26
+            cxx_std_${MKA_CXX_STANDARD}
     )
 
 endif ()
@@ -149,7 +158,7 @@ if (MKA_BUILD_PIPEWIRE)
     target_compile_features(
             mka-audio-pipewire
             PRIVATE
-            cxx_std_26
+            cxx_std_${MKA_CXX_STANDARD}
     )
 
 endif ()
@@ -183,7 +192,7 @@ if (MKA_BUILD_JACK)
     target_compile_features(
             mka-audio-jack
             PRIVATE
-            cxx_std_26
+            cxx_std_${MKA_CXX_STANDARD}
     )
 
 endif ()
@@ -217,7 +226,7 @@ if (MKA_BUILD_PULSEAUDIO)
     target_compile_features(
             mka-audio-pulseaudio
             PRIVATE
-            cxx_std_26
+            cxx_std_${MKA_CXX_STANDARD}
     )
 
 endif ()
@@ -256,7 +265,7 @@ if (MKA_BUILD_TESTS)
     target_compile_features(
             mka-core-audio-tests
             PRIVATE
-            cxx_std_26
+            cxx_std_${MKA_CXX_STANDARD}
     )
 
     include(GoogleTest)
@@ -285,7 +294,7 @@ if (MKA_BUILD_TESTS)
         target_compile_features(
                 mka-audio-alsa-tests
                 PRIVATE
-                cxx_std_26
+                cxx_std_${MKA_CXX_STANDARD}
         )
 
         gtest_discover_tests(
@@ -315,7 +324,7 @@ if (MKA_BUILD_TESTS)
         target_compile_features(
                 mka-audio-pipewire-tests
                 PRIVATE
-                cxx_std_26
+                cxx_std_${MKA_CXX_STANDARD}
         )
 
         gtest_discover_tests(
@@ -351,7 +360,7 @@ if (MKA_BUILD_TESTS)
         target_compile_features(
                 mka-audio-jack-tests
                 PRIVATE
-                cxx_std_26
+                cxx_std_${MKA_CXX_STANDARD}
         )
 
         gtest_discover_tests(
@@ -381,7 +390,7 @@ if (MKA_BUILD_TESTS)
         target_compile_features(
                 mka-audio-pulseaudio-tests
                 PRIVATE
-                cxx_std_26
+                cxx_std_${MKA_CXX_STANDARD}
         )
 
         gtest_discover_tests(

@@ -1398,3 +1398,8 @@ This SDK-independent configuration uses MSVC `/std:c++latest`, the existing
 C++ module file set and the same dynamic CRT for the library and GoogleTest.
 The Windows CI job runs the same positive and negative core contract tests;
 Linux-only allocator interposition is not part of this Windows preset.
+
+CMake currently recognizes MSVC's `/std:c++latest` under `cxx_std_23`, not
+`cxx_std_26`; the Windows build uses that CMake feature while compiling in
+`/std:c++latest` draft mode. Other compilers continue to require `cxx_std_26`.
+This does not claim that MSVC implements every future C++26 language feature.
