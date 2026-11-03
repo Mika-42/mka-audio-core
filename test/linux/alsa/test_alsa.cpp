@@ -2,6 +2,7 @@
 // Created by mika on 9/26/26.
 //
 
+#include <algorithm>
 #include <gtest/gtest.h>
 #include <print>
 #include <cmath>
@@ -37,6 +38,18 @@ static void printCaps(const mka::audio::core::StreamCapabilities &caps) {
     }
     std::println("");
 }
+
+// Physical-device scenarios are explicit skips when the original hw:1,0
+// fixture is absent. Null-PCM and argument-validation tests stay independent.
+class ALSABackendHwTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        mka::audio::core::ALSA backend;
+        const auto endpoints = backend.getEndPoints();
+        if (std::ranges::none_of(endpoints, [](const auto& e) { return e.id == "hw:1,0"; }))
+            GTEST_SKIP() << "physical ALSA fixture hw:1,0 is absent";
+    }
+};
 
 TEST(ALSABackendTest, TestGetEndPoints) {
     const mka::audio::core::ALSA alsa;
@@ -80,7 +93,7 @@ TEST(ALSABackendTest, TestGetEndPoints) {
     }
 }
 
-TEST(ALSABackendTest, TestGetEndPointsContainsKnownDevice) {
+TEST_F(ALSABackendHwTest, TestGetEndPointsContainsKnownDevice) {
     const mka::audio::core::ALSA alsa;
     const auto endpoints = alsa.getEndPoints();
 
@@ -99,6 +112,9 @@ TEST(ALSABackendTest, TestOpenInvalidID) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "InvalidID",
+        .direction = mka::audio::core::Direction::Output,
+        .inputChannels = 0, .outputChannels = 2, .sampleRate = 48000,
+        .format = mka::audio::core::Format::Float32, .bufferSize = 256,
     };
 
     auto ret = alsa.open(config);
@@ -116,7 +132,7 @@ TEST(ALSABackendTest, TestOpenInvalidFmt) {
         .inputChannels = 1,
         .outputChannels = 1,
         .sampleRate = 44100,
-        .format = mka::audio::core::Format::Float32,
+        .format = static_cast<mka::audio::core::Format>(255),
         .bufferSize = 512,
     };
 
@@ -151,7 +167,7 @@ TEST(ALSABackendTest, TestOpenInvalidSamplerate) {
         .direction = mka::audio::core::Direction::Duplex,
         .inputChannels = 2,
         .outputChannels = 2,
-        .sampleRate = 44190,
+        .sampleRate = 0,
         .format = mka::audio::core::Format::Int32,
         .bufferSize = 512,
     };
@@ -171,7 +187,7 @@ TEST(ALSABackendTest, TestOpenInvalidBuffSize) {
         .outputChannels = 2,
         .sampleRate = 44100,
         .format = mka::audio::core::Format::Int32,
-        .bufferSize = 500,
+        .bufferSize = 0,
     };
 
     auto ret = alsa.open(config);
@@ -180,7 +196,7 @@ TEST(ALSABackendTest, TestOpenInvalidBuffSize) {
     ASSERT_FALSE(alsa.close());
 }
 
-TEST(ALSABackendTest, TestOpenPartialFailureCleansUpCapture) {
+TEST_F(ALSABackendHwTest, TestOpenPartialFailureCleansUpCapture) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -198,7 +214,7 @@ TEST(ALSABackendTest, TestOpenPartialFailureCleansUpCapture) {
     ASSERT_FALSE(alsa.close());
 }
 
-TEST(ALSABackendTest, TestOpenTwiceFailsWithInvalidState) {
+TEST_F(ALSABackendHwTest, TestOpenTwiceFailsWithInvalidState) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -218,7 +234,7 @@ TEST(ALSABackendTest, TestOpenTwiceFailsWithInvalidState) {
     ASSERT_TRUE(alsa.close());
 }
 
-TEST(ALSABackendTest, TestOpenSucceed) {
+TEST_F(ALSABackendHwTest, TestOpenSucceed) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -255,7 +271,7 @@ TEST(ALSABackendTest, TestStartWithoutOpenFailsInvalidState) {
     ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
-TEST(ALSABackendTest, TestStartSucceedsAfterOpen) {
+TEST_F(ALSABackendHwTest, TestStartSucceedsAfterOpen) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -273,7 +289,7 @@ TEST(ALSABackendTest, TestStartSucceedsAfterOpen) {
     ASSERT_TRUE(ret);
 }
 
-TEST(ALSABackendTest, TestStartTwiceFailsInvalidState) {
+TEST_F(ALSABackendHwTest, TestStartTwiceFailsInvalidState) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -293,7 +309,7 @@ TEST(ALSABackendTest, TestStartTwiceFailsInvalidState) {
     ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
-TEST(ALSABackendTest, TestStartInvokesCallbackOnDifferentThread) {
+TEST_F(ALSABackendHwTest, TestStartInvokesCallbackOnDifferentThread) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -322,7 +338,7 @@ TEST(ALSABackendTest, TestStartInvokesCallbackOnDifferentThread) {
     ASSERT_NE(g_callbackThreadId.load(), callingThreadId);
 }
 
-TEST(ALSABackendTest, TestSetProcessFunctionFailsWhileRunning) {
+TEST_F(ALSABackendHwTest, TestSetProcessFunctionFailsWhileRunning) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -344,7 +360,7 @@ TEST(ALSABackendTest, TestSetProcessFunctionFailsWhileRunning) {
 
 //--- Test Stop
 
-TEST(ALSABackendTest, TestStopWithoutStartFailsInvalidState) {
+TEST_F(ALSABackendHwTest, TestStopWithoutStartFailsInvalidState) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -363,7 +379,7 @@ TEST(ALSABackendTest, TestStopWithoutStartFailsInvalidState) {
     ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
-TEST(ALSABackendTest, TestStopSucceedsAfterStart) {
+TEST_F(ALSABackendHwTest, TestStopSucceedsAfterStart) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -382,7 +398,7 @@ TEST(ALSABackendTest, TestStopSucceedsAfterStart) {
     ASSERT_TRUE(ret);
 }
 
-TEST(ALSABackendTest, TestStopTwiceFailsInvalidState) {
+TEST_F(ALSABackendHwTest, TestStopTwiceFailsInvalidState) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -403,7 +419,7 @@ TEST(ALSABackendTest, TestStopTwiceFailsInvalidState) {
     ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
-TEST(ALSABackendTest, TestStopActuallyHaltsCallbackInvocations) {
+TEST_F(ALSABackendHwTest, TestStopActuallyHaltsCallbackInvocations) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -433,7 +449,7 @@ TEST(ALSABackendTest, TestStopActuallyHaltsCallbackInvocations) {
     ASSERT_FALSE(g_callbackCalled.load());
 }
 
-TEST(ALSABackendTest, TestStopAllowsReopenAndRestart) {
+TEST_F(ALSABackendHwTest, TestStopAllowsReopenAndRestart) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -464,7 +480,7 @@ TEST(ALSABackendTest, TestCloseWithoutOpenFailsInvalidState) {
     ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
-TEST(ALSABackendTest, TestCloseSucceedsAfterOpen) {
+TEST_F(ALSABackendHwTest, TestCloseSucceedsAfterOpen) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -482,7 +498,7 @@ TEST(ALSABackendTest, TestCloseSucceedsAfterOpen) {
     ASSERT_TRUE(ret);
 }
 
-TEST(ALSABackendTest, TestCloseFailsWhileRunning) {
+TEST_F(ALSABackendHwTest, TestCloseFailsWhileRunning) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -507,7 +523,7 @@ TEST(ALSABackendTest, TestCloseFailsWhileRunning) {
     ASSERT_TRUE(alsa.close());
 }
 
-TEST(ALSABackendTest, TestCloseTwiceFailsInvalidState) {
+TEST_F(ALSABackendHwTest, TestCloseTwiceFailsInvalidState) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -527,7 +543,7 @@ TEST(ALSABackendTest, TestCloseTwiceFailsInvalidState) {
     ASSERT_EQ(ret.error(), mka::audio::core::ErrorType::InvalidState);
 }
 
-TEST(ALSABackendTest, TestCloseReleasesDeviceForReopen) {
+TEST_F(ALSABackendHwTest, TestCloseReleasesDeviceForReopen) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -550,7 +566,7 @@ TEST(ALSABackendTest, TestCloseReleasesDeviceForReopen) {
     ASSERT_TRUE(alsa.close());
 }
 
-TEST(ALSABackendTest, TestFullLifecycleOpenStartStopClose) {
+TEST_F(ALSABackendHwTest, TestFullLifecycleOpenStartStopClose) {
     mka::audio::core::ALSA alsa;
     const mka::audio::core::EndpointConfig config{
         .id = "hw:1,0",
@@ -591,7 +607,7 @@ namespace {
 }
 
 // To togle remove DISABLED_
-TEST(ALSABackendTest, DISABLED_TestPlaySineWave) {
+TEST_F(ALSABackendHwTest, DISABLED_TestPlaySineWave) {
     mka::audio::core::ALSA alsa;
 
     constexpr mka::audio::core::SampleRate sampleRate = 44100;
@@ -665,7 +681,7 @@ namespace {
  * Wait 3s
  * play recording
  */
-TEST(ALSABackendTest, DISABLED_TestRecordAndPlayback) {
+TEST_F(ALSABackendHwTest, DISABLED_TestRecordAndPlayback) {
     constexpr mka::audio::core::SampleRate sampleRate = 48000;
     constexpr std::uint32_t channels = 2;
     constexpr int recordSeconds = 5;

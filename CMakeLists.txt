@@ -451,3 +451,7 @@ if (MKA_BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_CXX_FLA
     target_link_libraries(mka-audio-alloc-probe-tests PRIVATE GTest::gtest_main)
     gtest_discover_tests(mka-audio-alloc-probe-tests TEST_PREFIX "probe." PROPERTIES TIMEOUT 10)
 endif()
+
+if(MKA_BUILD_TESTS)
+    set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ClassifyTests.cmake")
+endif()

@@ -566,6 +566,7 @@ TEST_F(PulseAudioBackendHwTest, TestOpenInputSucceed) {
 }
 
 TEST_F(PulseAudioBackendHwTest, TestOpenWithEmptyIdSucceeds) {
+    SKIP_UNLESS(output);
     // Id vide = sink/source par défaut du serveur.
     mka::audio::core::PulseAudio pa;
     auto cfg = validOutputConfig();

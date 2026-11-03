@@ -1301,3 +1301,11 @@ retains allocations from that optional module; the non-RT fixture removes that
 dependency without disabling LeakSanitizer. Production client configuration and
 backend scheduling behavior are unchanged. Hardware and RTKit priority grants
 require separate platform testing.
+
+CTest labels select test requirements: `unit` needs no running audio server or
+physical device; `integration` exercises native SDKs; `server`/`virtual` can run
+with `test/linux/run_virtual_tests.sh`; `hardware` requires the physical ALSA
+fixture `hw:1,0`. Missing fixtures are explicit GoogleTest skips. `manual` marks
+disabled interactive scenarios; `rt` identifies callback/allocation checks and
+`nonrt` the pure control tests. For example, use `ctest -L unit` or run native
+checks with `ctest -L integration -LE hardware` inside the virtual harness.
