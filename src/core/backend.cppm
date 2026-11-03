@@ -347,6 +347,8 @@ export namespace mka::audio::core {
                         eventHandler_(eventUser_, Event{EventType::XRun, xruns});
                     }
 
+                    // Cancellation during a handler must not start another handler.
+                    if (stopToken.stop_requested()) break;
                     if (!failedSent && failed_.load(std::memory_order_acquire)) {
                         failedSent = true;
                         // Recharge après l'acquire : synchronisé avec le release de
