@@ -1254,3 +1254,8 @@ PipeWire input chunks are checked for alignment, Float32 stride, mapped bounds
 and corruption before exposing borrowed sample pointers. Corrupted chunks count
 as xruns and do not reach the process callback. Rewritten output chunks clear
 stale native flags and describe only the initialized frames.
+
+PipeWire terminal states disable user processing before publishing failure. A new
+native stream starts with fresh native readiness/failure flags; previous stream
+loss cannot poison the next open. `stop()` still waits for any in-flight process
+callback before its user data can be replaced or released.
