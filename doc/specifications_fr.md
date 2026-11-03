@@ -458,3 +458,25 @@ demande de latence ne garantit ni un ring matériel exact, ni le quantum du grap
 ni la taille du callback, ni la latence de bout en bout. `frames` fait foi à chaque
 callback. JACK revérifie fréquence et quantum avant start, le serveur pouvant
 changer pendant que le client est Open.
+
+## Capacités détectées et capacités effectives
+
+`getEndPoints() const noexcept` s’exécute sur le thread de contrôle : cette méthode
+peut allouer et communiquer avec le serveur audio ; `noexcept` ne la rend pas RT.
+Elle retourne un instantané par valeur, sans réserver de ressource. L’absence de
+`input` ou `output` signifie que la direction n’était pas exposée lors de cette
+découverte (occupée, indisponible ou non supportée). Une liste vide peut aussi
+signifier un échec de découverte ; l’interface ne possède pas de canal d’erreur
+séparé pour cette opération.
+
+| Backend | Origine réelle des capacités |
+| --- | --- |
+| ALSA | Bornes natives des canaux et sondes indépendantes des fréquences, formats et périodes candidats du framework. Les flux occupés/non interrogeables peuvent être omis. |
+| JACK | Fréquence/quantum actuels du serveur et nombre de ports audio regroupés par client ; une sortie serveur devient une entrée du framework. |
+| PipeWire | Identités du registre et candidats génériques : 1–2 canaux, Float32, listes de fréquences/buffers du framework. Aucune sonde EnumFormat fine par nœud. |
+| PulseAudio | Identités sink/source et comptes de canaux rapportés par le serveur ; Float32 et candidats fréquence/buffer du framework. Le serveur peut convertir. |
+
+Ces listes ne sont ni exhaustives ni une garantie de compatibilité de toutes leurs
+combinaisons. `supportedSampleRates`, `supportedFormats` et `supportedBufferSizes`
+sont des candidats du framework, pas une preuve de support matériel. `open()` doit
+revérifier le flux natif et peut refuser explicitement un candidat annoncé.

@@ -14,6 +14,10 @@ export namespace mka::audio::core {
     // Duplex : les deux comptes sont > 0 ; le backend doit supporter les deux sens.
     enum class Direction { Input, Output, Duplex };
 
+    // Instantané indicatif : les listes ne garantissent ni toutes les valeurs
+    // possibles, ni le produit cartésien de leurs combinaisons. Elles peuvent
+    // provenir de sondes natives (ALSA/JACK) ou de candidats (PipeWire/PulseAudio).
+    // L’état du serveur/périphérique peut changer ; open() revalide le flux réel.
     struct StreamCapabilities {
         std::uint32_t minChannels;
         std::uint32_t maxChannels;

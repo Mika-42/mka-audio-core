@@ -199,6 +199,9 @@ export namespace mka::audio::core {
                 });
             }
 
+            // Découverte HORS RT : peut allouer et contacter le serveur audio.
+            // Renvoie un instantané par valeur, pas une réservation ni une preuve
+            // d’ouvrabilité. Une liste vide peut indiquer absence ou échec de découverte.
             // Ne dépend pas de l'état : pas de verrou. Une exception donne une liste vide.
             [[nodiscard]] std::vector<Endpoint> getEndPoints() const noexcept {
                 try {
