@@ -1460,3 +1460,11 @@ and capture frames are bounded by native capacity. Conversion reuses the core
 converters. WAVEFORMATEXTENSIBLE PCM24 in a 32-bit container is high-aligned (unlike
 ALSA's low-aligned S24In32); its adapter shifts the valid bits explicitly and
 ignores input padding. No conversion buffer is allocated on the audio path.
+
+Start prepares an MTA processing worker and silent render prefill before starting
+the native client. User processing is enabled only after native Start succeeds;
+startup failure signals and joins the pending worker. The audio loop waits on its
+native audio/stop events outside processing. MMCSS Pro Audio registration is
+optional and reported through the existing RealtimeState status. Stop disables
+new processing, wakes and joins any in-flight callback before native Stop/Reset.
+Close/destruction force quiescence before releasing COM interfaces or buffers.

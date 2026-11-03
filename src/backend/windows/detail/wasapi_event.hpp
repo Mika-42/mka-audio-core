@@ -1,11 +1,15 @@
 #pragma once
 #include "wasapi_control.hpp"
+#include <avrt.h>
 namespace mka_wasapi_detail {
 struct EventApi {
     decltype(&CreateEventW) create = &CreateEventW;
     decltype(&CloseHandle) close = &CloseHandle;
     decltype(&SetEvent) signal = &SetEvent;
     decltype(&WaitForMultipleObjects) wait = &WaitForMultipleObjects;
+    decltype(&ResetEvent) reset = &ResetEvent;
+    decltype(&AvSetMmThreadCharacteristicsW) enterAudio = &AvSetMmThreadCharacteristicsW;
+    decltype(&AvRevertMmThreadCharacteristics) leaveAudio = &AvRevertMmThreadCharacteristics;
 };
 class UniqueEvent {
 public:
