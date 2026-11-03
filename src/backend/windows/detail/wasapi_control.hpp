@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <objbase.h>
 #include <condition_variable>
+#include <atomic>
 #include <functional>
 #include <optional>
 #include <future>
@@ -23,11 +24,23 @@ struct ComApi {
     decltype(&CoCreateInstance) create = &CoCreateInstance;
 };
 
+#if defined(MKA_WASAPI_TESTING)
+// Only test builds can replace the native factory; no constructor/SDK parameter
+// is added to Wasapi's portable public interface.
+inline std::atomic<const ComApi*> testApiOverride{nullptr};
+#endif
+inline ComApi defaultComApi() noexcept {
+#if defined(MKA_WASAPI_TESTING)
+    if(const auto* api=testApiOverride.load(std::memory_order_acquire))return *api;
+#endif
+    return {};
+}
+
 // Every COM object is acquired and released in this persistent MTA. Public
 // control calls may originate on another thread, including an application's STA.
 class ControlThread {
 public:
-    explicit ControlThread(ComApi api = {}) : api_(api) {
+    explicit ControlThread(ComApi api = defaultComApi()) : api_(api) {
         std::promise<HRESULT> ready;
         auto result = ready.get_future();
         worker_ = std::jthread([this, &ready](std::stop_token stop) {
