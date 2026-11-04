@@ -596,11 +596,11 @@ TEST(ALSAManualTest, DISABLED_TestPlaySineWave) {
     ASSERT_TRUE(alsa_manual::open(backend,alsa_manual::config<mka::audio::core::EndpointConfig>(false)));
     ASSERT_TRUE(backend.start());
     const bool complete=alsa_manual::wait(backend,[&]{return tone.frames.load()>=tone.total;},std::chrono::seconds(8));
-    const auto status=backend.status();
+    const auto playbackStatus=backend.status();
     ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
-    std::println("Sinus: {} frames generees, {} xruns, echec={}",tone.frames.load(),status.xruns,status.failed);
+    std::println("Sinus: {} frames generees, {} xruns, echec={}",tone.frames.load(),playbackStatus.xruns,playbackStatus.failed);
     ASSERT_TRUE(complete)<<"Le callback de sortie n'a pas progresse jusqu'au bout (voir status/PCM).";
-    EXPECT_FALSE(status.failed);
+    EXPECT_FALSE(playbackStatus.failed);
 }
 
 TEST(ALSAManualTest, DISABLED_TestRecordAndPlayback) {
