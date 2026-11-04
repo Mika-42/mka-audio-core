@@ -603,8 +603,33 @@ TEST(ALSAManualTest, TestPlaySineWave) {
     EXPECT_FALSE(status.failed);
 }
 
+TEST(ALSAManualSignalTest, ConstantInputDoesNotCountAsCapturedAudio) {
+    alsa_manual::Clip clip(4800);
+    for(auto& channel:clip.samples)std::fill(channel.begin(),channel.end(),0.25f);
+    clip.recorded=clip.capacity;
+    clip.removeDC();
+    EXPECT_FLOAT_EQ(clip.level().peak,0.0f);
+    EXPECT_DOUBLE_EQ(clip.level().rms,0.0);
+}
+
+TEST(ALSAManualSignalTest, QuietSingleChannelIsAmplifiedAndReplayedOnBothSpeakers) {
+    alsa_manual::Clip clip(4800);
+    for(std::size_t i=0;i<clip.capacity;++i)
+        clip.samples[1][i]=static_cast<float>(0.01*std::sin(2*std::numbers::pi*440*i/alsa_manual::rate));
+    clip.recorded=clip.capacity;
+    clip.removeDC();
+    EXPECT_GT(clip.level().rms,0.004);
+    EXPECT_FLOAT_EQ(clip.prepareReplay(),32.0f);
+    EXPECT_EQ(clip.samples[0],clip.samples[1]);
+    EXPECT_GT(clip.level().peak,0.31f);
+    EXPECT_FLOAT_EQ(clip.samples[0].front(),0.0f);
+    EXPECT_FLOAT_EQ(clip.samples[0].back(),0.0f);
+}
+
 TEST(ALSAManualTest, TestRecordAndPlayback) {
     alsa_manual::Clip clip;
+    std::println("Enregistrement pendant 5 secondes : parlez dans le microphone maintenant.");
+    std::fflush(stdout);
     {
         mka::audio::core::ALSA recorder;
         ASSERT_TRUE(recorder.setProcessFunction(+[](void* user,const mka::audio::core::AudioProcessContext& ctx) noexcept {
@@ -619,11 +644,20 @@ TEST(ALSAManualTest, TestRecordAndPlayback) {
         ASSERT_TRUE(complete)<<"Pas de progression de capture : delai depasse, fin du test plutot qu'une attente infinie.";
         ASSERT_FALSE(status.failed);
     }
+    clip.removeDC();
     const auto level=clip.level();
-    std::println("Signal capture: crete={:.8f}, RMS={:.8f}",level.peak,level.rms);
-    ASSERT_GT(level.peak,0.000001f)
-        <<"Des frames sont recues mais elles contiennent du silence. Verifier le PCM d'entree, Capture/Mic mute et son gain avec alsamixer/amixer ; hw:1,0 et hw:2,0 ne sont pas le meme micro.";
-    clip.fade();
+    std::println("Signal capture (sans composante continue): crete={:.8f}, RMS={:.8f} ({:.1f} dBFS)",
+        level.peak,level.rms,20*std::log10(std::max(level.rms,1e-12)));
+    const char* capturePath=std::getenv("MKA_TEST_ALSA_CAPTURE_WAV");
+    if(!capturePath || !*capturePath)capturePath="mka-alsa-capture.wav";
+    ASSERT_TRUE(clip.saveWav(capturePath))<<"Impossible d'ecrire le WAV : "<<capturePath;
+    std::println("Capture avant amplification sauvegardee : {}",capturePath);
+    ASSERT_GT(level.peak,0.001f)
+        <<"Capture silencieuse ou trop faible. Verifier le PCM d'entree, Capture/Mic mute et le gain avec alsamixer/amixer.";
+    ASSERT_GT(level.rms,0.0001)
+        <<"Energie capturee insuffisante (moins de -80 dBFS) : parler pendant la capture et verifier le micro selectionne.";
+    const auto gain=clip.prepareReplay();
+    std::println("Relecture du canal micro le plus fort sur les deux sorties, gain x{:.2f}",gain);
     std::println("Lecture de la capture dans 1 seconde...");
     std::this_thread::sleep_for(std::chrono::seconds(1));
     {

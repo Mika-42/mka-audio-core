@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <numbers>
+#include <fstream>
 #include <print>
 #include <string>
 #include <thread>
@@ -129,6 +130,53 @@ struct Clip {
             }
         }
         played.store(offset+ctx.frames,std::memory_order_release);
+    }
+    // Control-thread processing only, after capture has stopped.
+    void removeDC() {
+        const auto count=std::min(recorded.load(),capacity);
+        if(!count)return;
+        for(auto& channel:samples){
+            double mean=0;
+            for(std::size_t i=0;i<count;++i)mean+=channel[i];
+            mean/=count;
+            for(std::size_t i=0;i<count;++i)channel[i]-=static_cast<float>(mean);
+        }
+    }
+    float prepareReplay() {
+        // Use the strongest microphone channel on both speakers, avoiding a
+        // quiet/missing channel or phase cancellation between stereo microphones.
+        std::size_t best=0;double bestEnergy=-1;
+        for(std::size_t ch=0;ch<samples.size();++ch){
+            double energy=0;
+            for(float value:samples[ch])energy+=static_cast<double>(value)*value;
+            if(energy>bestEnergy){best=ch;bestEnergy=energy;}
+        }
+        float peak=0;
+        for(float value:samples[best])peak=std::max(peak,std::abs(value));
+        const float gain=peak>0?std::min(32.0f,0.5f/peak):1.0f;
+        for(std::size_t ch=0;ch<samples.size();++ch)
+            if(ch!=best)samples[ch]=samples[best];
+        for(auto& channel:samples)for(float& value:channel)value*=gain;
+        fade();
+        return gain;
+    }
+    bool saveWav(const char* path) const {
+        std::ofstream file(path,std::ios::binary);
+        const auto count=std::min(recorded.load(),capacity);
+        const auto bytes=static_cast<std::uint32_t>(count*channels*2);
+        auto integer=[&](std::uint32_t value,unsigned width){
+            for(unsigned i=0;i<width;++i)file.put(static_cast<char>((value>>(8*i))&255));
+        };
+        file.write("RIFF",4);integer(36+bytes,4);file.write("WAVEfmt ",8);
+        integer(16,4);integer(1,2);integer(channels,2);integer(rate,4);
+        integer(rate*channels*2,4);integer(channels*2,2);integer(16,2);
+        file.write("data",4);integer(bytes,4);
+        for(std::size_t i=0;i<count;++i)for(const auto& channel:samples){
+            const auto value=static_cast<std::int16_t>(std::clamp(channel[i],-1.0f,1.0f)*32767);
+            integer(static_cast<std::uint16_t>(value),2);
+        }
+        file.close();
+        return !file.fail();
     }
     void fade() {
         const auto count=std::min<std::size_t>(rate/50,capacity/2);

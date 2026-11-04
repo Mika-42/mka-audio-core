@@ -75,3 +75,22 @@ working native reference with a failing mka test needs the isolated test's outpu
 (frames, levels, xruns, error) to diagnose the backend. The automated null-PCM
 signal test checks S32 mmap conversion and replay, not a physical amplifier or
 microphone.
+
+## Verify a microphone recording
+
+The record test announces a five-second capture: speak into the selected microphone
+as soon as the announcement appears. It writes `mka-alsa-capture.wav` in the working
+directory (override with `MKA_TEST_ALSA_CAPTURE_WAV`). This WAV contains the capture
+with DC removed, before replay gain, and is saved even when the level check fails.
+Listen independently with `aplay -D hw:1,0 mka-alsa-capture.wav` or inspect its waveform.
+
+The test reports peak and RMS in dBFS after removing DC. It fails below a peak of
+0.001 or RMS of 0.0001 (-80 dBFS), rather than accepting tiny numerical noise or a
+constant offset as recorded audio. Passing these checks proves signal energy,
+not that the selected microphone captured intelligible speech.
+
+Replay uses the strongest captured channel on both outputs and targets a peak of
+0.5, with amplification capped at 32x. The applied gain is printed. This makes a
+quiet single-channel microphone easier to hear without changing hardware mixer
+settings. If capture still fails, compare the saved WAV with a native `arecord`
+capture on the same input and inspect Capture/Mic mute, gain and routing.
