@@ -402,8 +402,8 @@ endif ()
 if (MKA_BUILD_TESTS AND MKA_BUILD_ALSA)
     add_executable(mka-audio-alsa-contract-tests test/linux/alsa/test_contract.cpp)
     target_link_libraries(mka-audio-alsa-contract-tests PRIVATE mka-audio-alsa ALSA::ALSA GTest::gtest_main)
-    foreach(symbol snd_pcm_open snd_pcm_close snd_pcm_hw_params_set_access snd_pcm_hw_params_set_rate snd_pcm_hw_params_get_rate
-            snd_pcm_hw_params_set_period_size snd_pcm_hw_params_set_periods snd_pcm_hw_params_get_period_size
+    foreach(symbol snd_pcm_open snd_pcm_close snd_pcm_hw_params_any snd_pcm_hw_params_set_access snd_pcm_hw_params_set_rate snd_pcm_hw_params_get_rate
+            snd_pcm_hw_params_set_period_size snd_pcm_hw_params_set_periods_integer snd_pcm_hw_params_set_periods_near snd_pcm_hw_params_get_period_size
             snd_pcm_hw_params_get_buffer_size snd_pcm_hw_params_get_periods
             snd_pcm_hw_params_set_channels snd_pcm_hw_params_get_channels snd_pcm_link snd_pcm_unlink
             snd_pcm_avail_update snd_pcm_resume snd_pcm_mmap_begin snd_pcm_mmap_commit)

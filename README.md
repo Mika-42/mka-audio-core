@@ -1240,10 +1240,13 @@ immediately. It joins an in-flight handler before returning and cancels pending
 delivery. Handlers must finish promptly: a blocking user handler cannot have a
 hard shutdown deadline without abandoning live user data. No thread is detached.
 
-ALSA requires an exact period of `bufferSize` frames and a ring of exactly three
-whole periods. It reads back the rate, period, period count and ring size after
-applying hardware parameters. Fractional/nearest periods or a different ring
-return `BufferSizeNotSupported`; failed native readbacks return `ConfigurationFailed`.
+ALSA requires an exact period of `bufferSize` frames. The native ring uses at least
+two whole periods; three are preferred, but the count follows the hardware
+constraints (for example, the AMD acp63 capture driver requires four). It reads
+back the rate, period, negotiated period count and ring size after applying
+hardware parameters. A rounded callback period, fractional ring or inconsistent
+readback returns `BufferSizeNotSupported`; failed native readbacks return
+`ConfigurationFailed`. The negotiated ring count does not change the callback size.
 
 An ALSA mmap chunk with no frames or an invalid ring range is treated as an xrun,
 not retried in a tight transfer loop. Recovery drops/prepares/prefills/restarts the

@@ -25,6 +25,16 @@ successful recording. All waits are bounded. Fades and silence around replay
 avoid abrupt signal edges. No logging, allocation or mixer change happens in the
 process callbacks.
 
+The AMD acp63 PDM capture driver requires exactly four periods in its native
+ring. The backend previously required exactly three, which rejected this input
+even though its 48 kHz/S32/stereo/512-frame configuration appeared in discovery.
+The backend now negotiates the internal period count while keeping the requested
+callback period exact. See the Linux driver constraints in
+[acp63.h](https://github.com/torvalds/linux/blob/v6.8/sound/soc/amd/ps/acp63.h#L45)
+and [ps-pdm-dma.c](https://github.com/torvalds/linux/blob/v6.8/sound/soc/amd/ps/ps-pdm-dma.c).
+This fixes that capture-open incompatibility; it does not establish why a running
+playback stream would be inaudible on a physical speaker.
+
 ## Diagnose the actual failing layer
 
 `ALSA ... Unknown PCM InvalidID` from **TestOpenInvalidID** is an expected negative

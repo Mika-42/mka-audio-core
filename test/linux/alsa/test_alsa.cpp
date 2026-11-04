@@ -6,11 +6,10 @@
 #include <gtest/gtest.h>
 #include <print>
 #include <cmath>
+#include "../../utils/alsa_manual_audio.hpp"
 
 import mka.audio.backend.alsa;
 import mka.audio.process;
-
-#include "../../utils/alsa_manual_audio.hpp"
 
 static const char *fmtToStr(mka::audio::core::Format format) {
     switch (format) {
@@ -594,7 +593,7 @@ TEST(ALSAManualTest, DISABLED_TestPlaySineWave) {
     ASSERT_TRUE(backend.setProcessFunction(+[](void* user,const mka::audio::core::AudioProcessContext& ctx) noexcept {
         static_cast<alsa_manual::Tone*>(user)->process(ctx);
     },&tone));
-    ASSERT_TRUE(alsa_manual::open(backend,alsa_manual::config(false)));
+    ASSERT_TRUE(alsa_manual::open(backend,alsa_manual::config<mka::audio::core::EndpointConfig>(false)));
     ASSERT_TRUE(backend.start());
     const bool complete=alsa_manual::wait(backend,[&]{return tone.frames.load()>=tone.total;},std::chrono::seconds(8));
     const auto status=backend.status();
@@ -611,7 +610,7 @@ TEST(ALSAManualTest, DISABLED_TestRecordAndPlayback) {
         ASSERT_TRUE(recorder.setProcessFunction(+[](void* user,const mka::audio::core::AudioProcessContext& ctx) noexcept {
             static_cast<alsa_manual::Clip*>(user)->record(ctx);
         },&clip));
-        ASSERT_TRUE(alsa_manual::open(recorder,alsa_manual::config(true)));
+        ASSERT_TRUE(alsa_manual::open(recorder,alsa_manual::config<mka::audio::core::EndpointConfig>(true)));
         ASSERT_TRUE(recorder.start());
         const bool complete=alsa_manual::wait(recorder,[&]{return clip.recorded.load()>=clip.capacity;},std::chrono::seconds(12));
         const auto status=recorder.status();
@@ -632,7 +631,7 @@ TEST(ALSAManualTest, DISABLED_TestRecordAndPlayback) {
         ASSERT_TRUE(player.setProcessFunction(+[](void* user,const mka::audio::core::AudioProcessContext& ctx) noexcept {
             static_cast<alsa_manual::Clip*>(user)->play(ctx);
         },&clip));
-        ASSERT_TRUE(alsa_manual::open(player,alsa_manual::config(false)));
+        ASSERT_TRUE(alsa_manual::open(player,alsa_manual::config<mka::audio::core::EndpointConfig>(false)));
         ASSERT_TRUE(player.start());
         const bool complete=alsa_manual::wait(player,[&]{return clip.played.load()>=clip.lead+clip.capacity+clip.tail;},std::chrono::seconds(12));
         const auto status=player.status();

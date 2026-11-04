@@ -1,11 +1,14 @@
 #pragma once
-// Test-only helpers; include after importing mka.audio.backend.alsa.
+// Include before module imports, like rt_test_utils.hpp. Module-dependent
+// types are template parameters so no native/standard header follows an import.
 #include <alsa/asoundlib.h>
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <numbers>
@@ -15,9 +18,8 @@
 #include <vector>
 
 namespace alsa_manual {
-using namespace mka::audio::core;
-inline constexpr SampleRate rate=48000;
-inline constexpr BufferSize period=512;
+inline constexpr std::uint32_t rate=48000;
+inline constexpr std::uint32_t period=512;
 inline constexpr std::uint32_t channels=2;
 inline std::string device(bool input) {
     const char* name=std::getenv(input?"MKA_TEST_ALSA_INPUT_DEVICE":"MKA_TEST_ALSA_OUTPUT_DEVICE");
@@ -25,10 +27,14 @@ inline std::string device(bool input) {
     if(!input){name=std::getenv("MKA_TEST_ALSA_DEVICE");if(name && *name)return name;}
     return input?"hw:2,0":"hw:1,0";
 }
-inline EndpointConfig config(bool input) {
+template<class EndpointConfig>
+EndpointConfig config(bool input) {
+    using Direction=decltype(EndpointConfig{}.direction);
+    using Format=decltype(EndpointConfig{}.format);
     return {device(input),input?Direction::Input:Direction::Output,input?channels:0,input?0:channels,rate,Format::Int32,period};
 }
-inline const char* errorName(ErrorType error) noexcept {
+template<class ErrorType>
+const char* errorName(ErrorType error) noexcept {
     switch(error){
         case ErrorType::InvalidState:return "InvalidState";
         case ErrorType::EndpointUnavailable:return "EndpointUnavailable";
@@ -40,7 +46,9 @@ inline const char* errorName(ErrorType error) noexcept {
     }
     return "Unknown";
 }
-inline Result open(ALSA& backend,const EndpointConfig& cfg) {
+template<class Backend,class EndpointConfig>
+auto open(Backend& backend,const EndpointConfig& cfg) {
+    using Direction=decltype(cfg.direction);
     std::println("ALSA {}: {} | {} Hz | {} canaux | S32 | periode {}",
         cfg.direction==Direction::Input?"capture":"lecture",cfg.id,cfg.sampleRate,
         cfg.direction==Direction::Input?cfg.inputChannels:cfg.outputChannels,cfg.bufferSize);
@@ -60,8 +68,8 @@ inline Result open(ALSA& backend,const EndpointConfig& cfg) {
     }
     return result;
 }
-template<class Predicate>
-bool wait(ALSA& backend,Predicate done,std::chrono::milliseconds timeout) {
+template<class Backend,class Predicate>
+bool wait(Backend& backend,Predicate done,std::chrono::milliseconds timeout) {
     const auto end=std::chrono::steady_clock::now()+timeout;
     while(!done()){
         if(backend.status().failed || std::chrono::steady_clock::now()>=end)return false;
@@ -74,7 +82,8 @@ struct Tone {
     static constexpr std::size_t signalFrames=static_cast<std::size_t>(rate)*3;
     static constexpr std::size_t total=signalFrames+rate/5; // Let queued audio play before stop() drops the PCM.
     double phase=0;
-    void process(const AudioProcessContext& ctx) noexcept {
+    template<class Context>
+    void process(const Context& ctx) noexcept {
         const auto offset=frames.load(std::memory_order_relaxed);
         const auto remaining=offset<total?total-offset:0;
         const auto count=std::min<std::size_t>(ctx.frames,remaining);
@@ -99,7 +108,8 @@ struct Clip {
     std::size_t warmup=rate/5;
     const std::size_t lead=rate/5,tail=rate/5;
     explicit Clip(std::size_t frames=static_cast<std::size_t>(rate)*5):capacity(frames),samples(channels,std::vector<float>(frames,0.0f)){}
-    void record(const AudioProcessContext& ctx) noexcept {
+    template<class Context>
+    void record(const Context& ctx) noexcept {
         const auto skip=std::min<std::size_t>(warmup,ctx.frames);warmup-=skip;
         const auto offset=recorded.load(std::memory_order_relaxed);
         const auto available=offset<capacity?capacity-offset:0;
@@ -108,7 +118,8 @@ struct Clip {
             for(std::size_t i=0;i<count;++i)samples[ch][offset+i]=ctx.input.channels[ch][skip+i];
         recorded.store(offset+count,std::memory_order_release);
     }
-    void play(const AudioProcessContext& ctx) noexcept {
+    template<class Context>
+    void play(const Context& ctx) noexcept {
         const auto offset=played.load(std::memory_order_relaxed);
         for(std::uint32_t ch=0;ch<ctx.output.count;++ch){
             const auto& source=samples[ch<samples.size()?ch:0];
