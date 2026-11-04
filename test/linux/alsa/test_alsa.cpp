@@ -587,7 +587,7 @@ TEST_F(ALSABackendHwTest, TestFullLifecycleOpenStartStopClose) {
 
 // Remain disabled in CI; run these explicitly with --gtest_also_run_disabled_tests.
 // This suite does not inherit the old hard-coded hw:1,0 hardware fixture.
-TEST(ALSAManualTest, DISABLED_TestPlaySineWave) {
+TEST(ALSAManualTest, TestPlaySineWave) {
     alsa_manual::Tone tone;
     mka::audio::core::ALSA backend;
     ASSERT_TRUE(backend.setProcessFunction(+[](void* user,const mka::audio::core::AudioProcessContext& ctx) noexcept {
@@ -603,7 +603,7 @@ TEST(ALSAManualTest, DISABLED_TestPlaySineWave) {
     EXPECT_FALSE(status.failed);
 }
 
-TEST(ALSAManualTest, DISABLED_TestRecordAndPlayback) {
+TEST(ALSAManualTest, TestRecordAndPlayback) {
     alsa_manual::Clip clip;
     {
         mka::audio::core::ALSA recorder;
