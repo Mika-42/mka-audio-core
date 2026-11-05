@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Relocate a production prefix and hide its source/build trees before consumption."""
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -18,8 +19,10 @@ if not a.core_only:
 flags=[f'-DMKA_BUILD_{name}={"ON" if on else "OFF"}' for name,on in options.items()]
 extra=[value for value in extra if value!='--']
 def run(*args):subprocess.run(args,check=True)
-run('cmake','-S',str(source),'-B',str(build),'-G','Ninja','-DCMAKE_BUILD_TYPE=Release','-DMKA_BUILD_TESTS=OFF',*flags,*extra)
+run('cmake','-S',str(source),'-B',str(build),'-G','Ninja','-DCMAKE_BUILD_TYPE=Release','-DCMAKE_EXPORT_COMPILE_COMMANDS=ON','-DMKA_BUILD_TESTS=OFF',*flags,*extra)
 run('cmake','--build',str(build),'--parallel','2')
+commands=json.loads((build/'compile_commands.json').read_text())
+assert all('MKA_WASAPI_TESTING' not in c['command'] and 'MKA_COREAUDIO_TESTING' not in c['command'] and 'googletest' not in c['file'] for c in commands)
 run('cmake','--install',str(build),'--prefix',str(prefix))
 prefix.rename(relocated)
 source.rename(root/'producer-source-unavailable');build.rename(root/'producer-build-unavailable')

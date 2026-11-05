@@ -5,6 +5,9 @@ project(mka-core-audio VERSION 0.1.0
         LANGUAGES CXX
 )
 
+# Use GNU install directories in both build interfaces and package exports.
+include(GNUInstallDirs)
+
 # ============================================================
 # Project options
 # ============================================================
@@ -91,7 +94,7 @@ configure_file(cmake/build_config.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/
 add_library(mka-core-audio)
 target_include_directories(mka-core-audio PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
-    "$<INSTALL_INTERFACE:include>")
+    "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 
 target_sources(mka-core-audio
         PUBLIC
