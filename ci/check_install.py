@@ -27,8 +27,8 @@ run('cmake','--install',str(build),'--prefix',str(prefix))
 prefix.rename(relocated)
 source.rename(root/'producer-source-unavailable');build.rename(root/'producer-build-unavailable')
 for path in relocated.rglob('*.cmake'):
-    text=path.read_text()
-    assert str(source) not in text and str(build) not in text, f'Producer path leak: {path}'
+    text=path.read_text().replace('\\','/')
+    assert source.as_posix() not in text and build.as_posix() not in text, f'Producer path leak: {path}'
 components=';'.join(name.lower() for name,on in options.items() if on) or 'core'
 run('cmake','-S',str(client),'-B',str(client_build),'-G','Ninja','-DCMAKE_BUILD_TYPE=Release',f'-DCMAKE_PREFIX_PATH={relocated}',f'-DMKA_CLIENT_COMPONENTS={components}',*extra)
 run('cmake','--build',str(client_build),'--parallel','2')
