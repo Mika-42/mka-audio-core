@@ -18,7 +18,9 @@ the offline DSP example. It creates TGZ and ZIP development packages, extracts b
 to new prefixes, compiles public clients against each package and executes the
 installed example. It then creates a source tarball from Git's committed files and
 builds/runs the SDK-independent example from that source archive. No VCS state or
-untracked build output enters the source tarball.
+untracked build output enters the source tarball. Git export uses LF line endings
+on every host; the harness checks that packaged shell scripts remain usable on
+POSIX even when the archive was prepared on Windows.
 
 `release-manifest.json` records version, candidate status, OS/architecture, compiler,
 build type, compiled backends, source commit and artifact sizes/hashes. `SHA256SUMS`

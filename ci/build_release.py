@@ -65,9 +65,13 @@ for generator in ('TGZ','ZIP'):
     run('ctest','--test-dir',str(client_build),'--no-tests=error','--output-on-failure','--output-junit',str(artifacts/f'junit-package-{generator}.xml'))
     packages.append(archive)
 source_archive=artifacts/f"mka-audio-core-{metadata['version']}-source.tar.gz"
-run('git','-C',str(source),'archive','--format=tar.gz',f"--prefix=mka-audio-core-{metadata['version']}-source/",'-o',str(source_archive),'HEAD')
+# Archive conversion follows Git's working-tree EOL settings, even for committed
+# blobs. Keep source scripts usable on POSIX when preparing from a Windows host.
+run('git','-c','core.autocrlf=false','-c','core.eol=lf','-C',str(source),'archive','--format=tar.gz',f"--prefix=mka-audio-core-{metadata['version']}-source/",'-o',str(source_archive),'HEAD')
 source_unpacked=work/'source-unpacked';extract(source_archive,source_unpacked)
 source_roots=[path.parent for path in source_unpacked.glob('*/CMakeLists.txt')];assert len(source_roots)==1
+for script in source_roots[0].rglob('*.sh'):
+    assert b'\r\n' not in script.read_bytes(),f'Non-portable shell script in source package: {script}'
 source_build=work/'source-smoke'
 run('cmake','-S',str(source_roots[0]),'-B',str(source_build),'-G','Ninja','-DCMAKE_BUILD_TYPE=Release','-DMKA_BUILD_TESTS=OFF','-DMKA_BUILD_EXAMPLES=ON',*[f'-DMKA_BUILD_{name}=OFF' for name in options],*extra)
 run('cmake','--build',str(source_build),'--parallel','2');run(str(source_build/('mka-dsp-example'+suffix)))
