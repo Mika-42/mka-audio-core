@@ -75,9 +75,9 @@ int main(int argc,char** argv){
         else if(key=="--channels"){if(!number(value,channels))return 2;}
         else {std::cerr<<"Unknown option: "<<key<<'\n';return 2;}
     }
+    mka_audit::Recorder recorder; // Outlives the backend even when native stop fails.
     auto backend=makeBackend(backendName);
     if(!backend){std::cerr<<"Backend is not compiled: "<<backendName<<'\n';return 2;}
-    mka_audit::Recorder recorder;
     if(!backend->setProcessFunction(+[](void* user,const AudioProcessContext& context) noexcept {
         const auto begin=mka_audit::now();
         for(std::uint32_t ch=0;ch<context.output.count;++ch)
@@ -111,5 +111,5 @@ int main(int argc,char** argv){
        <<",\"jitter_intervals\":"<<jitter.count<<",\"jitter_abs_mean_ns\":"<<jitter.mean
        <<",\"jitter_abs_p99_ns\":"<<jitter.p99<<",\"jitter_abs_max_ns\":"<<jitter.max
        <<",\"xruns\":"<<status.xruns<<",\"failed\":"<<(status.failed?"true":"false")<<",\"realtime\":"<<static_cast<int>(status.realtime)<<"}\n";
-    return !out || status.failed || !recorder.calls.load()?1:0;
+    return !out || status.failed || !recorder.calls.load() || !recorder.frames.load()?1:0;
 }
