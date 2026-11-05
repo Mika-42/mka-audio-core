@@ -534,9 +534,6 @@ if(MKA_BUILD_COREAUDIO)
     endif()
 endif()
 
-if(MKA_BUILD_TESTS)
-    set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ClassifyTests.cmake")
-endif()
 
 option(MKA_BUILD_DIAGNOSTICS "Build opt-in CPU/transport timing diagnostics" OFF)
 if(MKA_BUILD_DIAGNOSTICS)
@@ -552,4 +549,8 @@ if(MKA_BUILD_TESTS)
     add_executable(mka-audio-metrics-tests test/diagnostics/test_metrics.cpp)
     target_link_libraries(mka-audio-metrics-tests PRIVATE GTest::gtest_main)
     gtest_discover_tests(mka-audio-metrics-tests TEST_PREFIX "diagnostics.")
+endif()
+
+if(MKA_BUILD_TESTS)
+    set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ClassifyTests.cmake")
 endif()
