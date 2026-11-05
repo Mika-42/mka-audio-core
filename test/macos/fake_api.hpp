@@ -13,6 +13,7 @@ struct FakeApi {
     bool malformed=false,canSet=true,floatFormat=true,roundFrames=false;
     AudioObjectPropertySelector failGet=0;
     int failCreate=0,failStart=0,failStop=0,failDestroy=0,failRemove=0,failAddAt=0;
+    OSStatus startStatus=noErr,stopStatus=noErr;
     int creates=0,destroys=0,starts=0,stops=0,adds=0,removes=0;
     AudioDeviceIOProc proc=nullptr;
     void* user=nullptr;
@@ -99,8 +100,8 @@ struct FakeApi {
         if(f.failDestroy-->0)return kAudioHardwareIllegalOperationError;
         ++f.destroys;f.proc=nullptr;f.user=nullptr;return noErr;
     }
-    static OSStatus start(AudioObjectID,AudioDeviceIOProcID){++current->starts;return current->failStart-->0?OSStatus{kAudioHardwareIllegalOperationError}:OSStatus{noErr};}
-    static OSStatus stop(AudioObjectID,AudioDeviceIOProcID){++current->stops;return current->failStop-->0?OSStatus{kAudioHardwareIllegalOperationError}:OSStatus{noErr};}
+    static OSStatus start(AudioObjectID,AudioDeviceIOProcID){++current->starts;return current->failStart-->0?OSStatus{kAudioHardwareIllegalOperationError}:current->startStatus;}
+    static OSStatus stop(AudioObjectID,AudioDeviceIOProcID){++current->stops;return current->failStop-->0?OSStatus{kAudioHardwareIllegalOperationError}:current->stopStatus;}
     static OSStatus add(AudioObjectID object,const AudioObjectPropertyAddress* address,AudioObjectPropertyListenerProc callback,void* user){
         auto& f=*current;++f.adds;
         if(f.adds==f.failAddAt)return kAudioHardwareIllegalOperationError;

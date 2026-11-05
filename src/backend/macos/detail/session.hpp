@@ -10,6 +10,12 @@
 namespace mka_coreaudio_detail {
 enum class Failure {Unavailable,Format,Channels,Rate,Buffer,Configuration};
 using Result=std::expected<void,Failure>;
+inline bool gone(OSStatus status) noexcept {
+    return status==kAudioHardwareBadObjectError || status==kAudioHardwareBadDeviceError;
+}
+inline Failure nativeFailure(OSStatus status) noexcept {
+    return gone(status) || status==kAudioDevicePermissionsError?Failure::Unavailable:Failure::Configuration;
+}
 struct Config {std::string uid;bool input=false,output=false;UInt32 inputs=0,outputs=0,rate=0,frames=0;};
 class Session {
 public:
@@ -60,7 +66,9 @@ public:
         }
         state_=std::make_unique<ProcessState>();
         state_->allocate(config.inputs,config.outputs,config.frames);
-        if(api_.create(device_,&ioProc,state_.get(),&proc_)!=noErr || !proc_)return std::unexpected{Failure::Configuration};
+        const auto created=api_.create(device_,&ioProc,state_.get(),&proc_);
+        if(created!=noErr)return std::unexpected{nativeFailure(created)};
+        if(!proc_)return std::unexpected{Failure::Configuration};
         if(auto result=listen();!result)return result;
         opened_=true;rollback.committed=true;
         return {};
@@ -82,10 +90,11 @@ public:
         quiesce();state_->callbacks=callbacks;state_->failed.store(false,std::memory_order_release);
         state_->accepting.store(true,std::memory_order_release);
         running_=true; // Even a failed start may have partially activated the IOProc.
-        if(api_.start(device_,proc_)!=noErr){
+        const auto started=api_.start(device_,proc_);
+        if(started!=noErr){
             state_->accepting.store(false,std::memory_order_release);
             if(api_.stop(device_,proc_)==noErr)running_=false;
-            quiesce();return std::unexpected{Failure::Configuration};
+            quiesce();return std::unexpected{nativeFailure(started)};
         }
         if(state_->invalidated.load(std::memory_order_acquire))state_->fail();
         return {};
@@ -94,7 +103,8 @@ public:
         if(!state_)return {};
         state_->accepting.store(false,std::memory_order_release);
         if(running_){
-            if(api_.stop(device_,proc_)!=noErr){quiesce();return std::unexpected{Failure::Configuration};}
+            const auto stopped=api_.stop(device_,proc_);
+            if(stopped!=noErr && !gone(stopped)){quiesce();return std::unexpected{nativeFailure(stopped)};}
             running_=false;
         }
         quiesce();return {};
@@ -102,14 +112,15 @@ public:
     Result close() noexcept {
         (void)stop();
         if(proc_){
-            if(api_.destroy(device_,proc_)!=noErr)return std::unexpected{Failure::Configuration};
+            const auto destroyed=api_.destroy(device_,proc_);
+            if(destroyed!=noErr && !gone(destroyed))return std::unexpected{nativeFailure(destroyed)};
             proc_=nullptr;
         }
         running_=false;
         while(!listeners_.empty()){
             const auto& listener=listeners_.back();
-            if(api_.remove(listener.object,&listener.address,&propertyChanged,state_.get())!=noErr)
-                return std::unexpected{Failure::Configuration};
+            const auto removed=api_.remove(listener.object,&listener.address,&propertyChanged,state_.get());
+            if(removed!=noErr && !gone(removed))return std::unexpected{nativeFailure(removed)};
             listeners_.pop_back();
         }
         quiesce();state_.reset();restore();opened_=false;device_=kAudioObjectUnknown;return {};
@@ -192,7 +203,8 @@ private:
             && read(api_,device_,kAudioDevicePropertyBufferFrameSize,frames) && frames==*setFrames_;
         if(oldRate_ && setRate_ && read(api_,device_,kAudioDevicePropertyNominalSampleRate,rate) && rate==*setRate_)
             (void)setExact(kAudioDevicePropertyNominalSampleRate,*oldRate_);
-        if(ownFrames)(void)setExact(kAudioDevicePropertyBufferFrameSize,*oldFrames_);
+        if(ownFrames && read(api_,device_,kAudioDevicePropertyBufferFrameSize,frames) && frames!=*oldFrames_)
+            (void)setExact(kAudioDevicePropertyBufferFrameSize,*oldFrames_);
         oldFrames_.reset();oldRate_.reset();setFrames_.reset();setRate_.reset();
     }
     std::optional<Float64> oldRate_,setRate_;
