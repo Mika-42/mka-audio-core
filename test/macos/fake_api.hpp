@@ -99,8 +99,8 @@ struct FakeApi {
         if(f.failDestroy-->0)return kAudioHardwareIllegalOperationError;
         ++f.destroys;f.proc=nullptr;f.user=nullptr;return noErr;
     }
-    static OSStatus start(AudioObjectID,AudioDeviceIOProcID){++current->starts;return current->failStart-->0?kAudioHardwareIllegalOperationError:noErr;}
-    static OSStatus stop(AudioObjectID,AudioDeviceIOProcID){++current->stops;return current->failStop-->0?kAudioHardwareIllegalOperationError:noErr;}
+    static OSStatus start(AudioObjectID,AudioDeviceIOProcID){++current->starts;return current->failStart-->0?OSStatus{kAudioHardwareIllegalOperationError}:OSStatus{noErr};}
+    static OSStatus stop(AudioObjectID,AudioDeviceIOProcID){++current->stops;return current->failStop-->0?OSStatus{kAudioHardwareIllegalOperationError}:OSStatus{noErr};}
     static OSStatus add(AudioObjectID object,const AudioObjectPropertyAddress* address,AudioObjectPropertyListenerProc callback,void* user){
         auto& f=*current;++f.adds;
         if(f.adds==f.failAddAt)return kAudioHardwareIllegalOperationError;
