@@ -1,6 +1,5 @@
 #pragma once
-#include <CoreAudio/CoreAudio.h>
-#include <CoreFoundation/CoreFoundation.h>
+#include "native.hpp"
 #include <atomic>
 
 namespace mka_coreaudio_detail {
