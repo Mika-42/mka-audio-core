@@ -120,7 +120,7 @@ private:
         std::vector<Listener> pending;
         for(auto selector:std::initializer_list<AudioObjectPropertySelector>{kAudioDevicePropertyDeviceIsAlive,kAudioDevicePropertyNominalSampleRate,
             kAudioDevicePropertyBufferFrameSize,kAudioDeviceProcessorOverload})pending.push_back({device_,property(selector)});
-        for(auto selector:{kAudioDevicePropertyClockDomain,kAudioDevicePropertyClockSource}){
+        for(auto selector:std::initializer_list<AudioObjectPropertySelector>{kAudioDevicePropertyClockDomain,kAudioDevicePropertyClockSource}){
             auto address=property(selector);
             if(api_.has(device_,&address))pending.push_back({device_,address});
         }
