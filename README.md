@@ -991,7 +991,7 @@ Current development priorities include:
 * [ ] Add real-time safety tests
 * [ ] Add performance/latency benchmarks
 * [ ] Add Windows backend
-* [ ] Add macOS backend
+* [x] Add macOS backend (CoreAudio HAL; see native validation limits)
 
 The API is expected to change while the architecture is being validated.
 
@@ -1206,7 +1206,8 @@ alone prove that a simultaneous opening is possible.
 | JACK | One client name whose output ports feed framework input and whose input ports receive framework output. Both port groups must have enough channels. One server cycle supplies one duplex callback. Empty ID creates unconnected client ports. |
 | PipeWire | One source or sink node name; a valid Duplex request returns `ConfigurationFailed` before native stream creation. Input and Output are supported separately. |
 | PulseAudio | One source or sink name; a valid Duplex request returns `ConfigurationFailed` before native stream creation. Empty ID selects the default device for the requested single direction. |
-| Windows/macOS | Current backend files are module stubs; no working duplex implementation is claimed. |
+| Windows | WASAPI shared-mode input/output; duplex requests are rejected. |
+| macOS | CoreAudio HAL Float32 input/output or duplex on one device/clock; no implicit aggregate device. |
 
 ALSA does not combine unrelated capture/playback devices; JACK can expose both
 port groups under the same client ID. Two unidirectional backend instances do not
@@ -1506,3 +1507,14 @@ CXX="$(brew --prefix llvm)/bin/clang++" cmake --preset macos-core
 cmake --build --preset macos-core --parallel 2
 ctest --preset macos-core
 ```
+
+
+`MKA_BUILD_COREAUDIO` enables the macOS-only `mka-audio-coreaudio` target and links
+CoreAudio/CoreFoundation. Import `mka.audio.backend.coreaudio` for
+`mka::audio::core::CoreAudio` (`coreaudio` is retained as a compatibility import).
+Use the `macos-coreaudio` configure/build/test presets for native SDK unit tests
+and `macos-coreaudio-asan` for ASan/UBSan. Requests use a device UID from discovery
+(or an empty UID for the system default), native channel counts and Float32.
+Capture requires microphone permission for the host application/terminal.
+See [CoreAudio validation and transport limits](docs/sprint06-validation.md) for
+supported layouts, exact rate/buffer handling, hardware tests and RT evidence.

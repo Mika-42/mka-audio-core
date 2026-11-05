@@ -84,3 +84,47 @@ claim to instrument internal HAL/driver allocations or all libc allocation APIs.
 Physical render/capture and unplug require an actual Mac and permissions. The
 hardware smoke test proves callback progress and post-stop quiescence when an
 endpoint is available; it does not prove speaker sound or microphone signal energy.
+
+## Recorded native results
+
+Validated implementation commit: `ece29d37d720939dc0c3c5d9f8a0ca24040cf260`.
+[macOS CI run](https://github.com/Mika-42/mka-audio-core/actions/runs/41986367417)
+completed successfully on macos-14 / arm64 with upstream Clang 23.1.0:
+
+- Core-only: **142/142** unit tests.
+- Core + CoreAudio: **161/161** unit tests (19 CoreAudio cases).
+- ASan/UBSan: **159/159** unit tests; the separate negative witness detected a
+  heap-buffer-overflow and the owned compilation flags were checked.
+- Native HAL render smoke test: **1 passed**, verifying callback progress and
+  post-stop quiescence on the runner's available output endpoint.
+- Native capture smoke test: **1 explicit SKIP**, requiring an opted-in device UID
+  and macOS microphone permission. No microphone capture or physical unplug proof
+  is claimed from this runner.
+- Production CoreAudio/core build without test injection or GoogleTest: passed.
+- Local Linux core regression: **144/144** tests, including two allocation-probe
+  cases, and explicit rejection of MKA_BUILD_COREAUDIO on a Linux target.
+
+These are implementation results, not an audition of a physical speaker. Later
+documentation-only commits do not change the implementation tested above.
+
+## Review order
+
+The 13 pull requests are stacked, with no automatic merge. The first includes the
+sprint 5 base and synchronizes the already accepted ALSA corrections from PR #95.
+Review/merge in card order rather than numeric PR order:
+
+| Card | Pull request |
+|---|---|
+| S06-01 | [#96](https://github.com/Mika-42/mka-audio-core/pull/96) |
+| S06-02 | [#98](https://github.com/Mika-42/mka-audio-core/pull/98) |
+| S06-03 | [#99](https://github.com/Mika-42/mka-audio-core/pull/99) |
+| S06-04 | [#100](https://github.com/Mika-42/mka-audio-core/pull/100) |
+| S06-05 | [#101](https://github.com/Mika-42/mka-audio-core/pull/101) |
+| S06-06 | [#102](https://github.com/Mika-42/mka-audio-core/pull/102) |
+| S06-07 | [#103](https://github.com/Mika-42/mka-audio-core/pull/103) |
+| S06-08 | [#104](https://github.com/Mika-42/mka-audio-core/pull/104) |
+| S06-09 | [#105](https://github.com/Mika-42/mka-audio-core/pull/105) |
+| S06-10 | [#106](https://github.com/Mika-42/mka-audio-core/pull/106) |
+| S06-11 | [#107](https://github.com/Mika-42/mka-audio-core/pull/107) |
+| S06-12 | [#108](https://github.com/Mika-42/mka-audio-core/pull/108) |
+| S06-13 | [#97](https://github.com/Mika-42/mka-audio-core/pull/97) |
