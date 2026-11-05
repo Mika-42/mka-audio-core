@@ -82,3 +82,21 @@ TEST(JackServerLoss, RealServerExitQuiescesAudioReportsFailureAndCanRecover) {
     ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
     EXPECT_EQ(failures.load(),1u);
 }
+
+TEST(JackServerLoss, RepeatedNativeServerRemovalAndReturnPreservesCallbackLifetime) {
+    TestServer server;
+    ASSERT_EQ(setenv("JACK_DEFAULT_SERVER",server.name.c_str(),1),0);
+    std::atomic<unsigned> calls=0;
+    JACK backend;
+    ASSERT_TRUE(backend.setProcessFunction(+[](void* user,const AudioProcessContext&) noexcept {
+        ++*static_cast<std::atomic<unsigned>*>(user);
+    },&calls));
+    const EndpointConfig config{"system",Direction::Output,0,2,48000,Format::Float32,256};
+    for(int cycle=0;cycle<3;++cycle){
+        ASSERT_TRUE(server.start());ASSERT_TRUE(backend.open(config));ASSERT_TRUE(backend.start());
+        const auto before=calls.load();ASSERT_TRUE(waitFor([&]{return calls.load()>before+16;}));
+        server.stop();ASSERT_TRUE(waitFor([&]{return backend.status().failed;}));
+        ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
+        const auto stopped=calls.load();std::this_thread::sleep_for(20ms);EXPECT_EQ(calls.load(),stopped);
+    }
+}
