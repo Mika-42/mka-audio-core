@@ -67,7 +67,7 @@ python3 ci/run_config_fuzz.py --binary build/fuzz/mka-audio-config-fuzz \
 Build production artifacts with the selected native backends and tests disabled:
 
 ```sh
-cmake --preset core -B build/package -DMKA_BUILD_TESTS=OFF
+cmake --preset core -B build/package -DCMAKE_BUILD_TYPE=Release -DMKA_BUILD_TESTS=OFF
 cmake --build build/package --parallel 2
 cmake --install build/package --prefix /tmp/mka-prefix
 ```
@@ -81,6 +81,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(mkaAudioCore CONFIG REQUIRED)
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE mka::core)
+```
+
+Configure that client with the same build configuration/runtime as the installed
+archives (particularly MSVC's Release `/MD` versus Debug `/MDd`):
+
+```sh
+cmake -S my-client -B my-client-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH=/tmp/mka-prefix
+cmake --build my-client-build
 ```
 
 Add `COMPONENTS alsa` (or jack, pipewire, pulseaudio, wasapi, coreaudio) and link

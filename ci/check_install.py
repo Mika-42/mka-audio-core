@@ -30,13 +30,13 @@ for path in relocated.rglob('*.cmake'):
     text=path.read_text()
     assert str(source) not in text and str(build) not in text, f'Producer path leak: {path}'
 components=';'.join(name.lower() for name,on in options.items() if on) or 'core'
-run('cmake','-S',str(client),'-B',str(client_build),'-G','Ninja',f'-DCMAKE_PREFIX_PATH={relocated}',f'-DMKA_CLIENT_COMPONENTS={components}',*extra)
+run('cmake','-S',str(client),'-B',str(client_build),'-G','Ninja','-DCMAKE_BUILD_TYPE=Release',f'-DCMAKE_PREFIX_PATH={relocated}',f'-DMKA_CLIENT_COMPONENTS={components}',*extra)
 run('cmake','--build',str(client_build),'--parallel','2')
 run('ctest','--test-dir',str(client_build),'--no-tests=error','--output-on-failure','--output-junit',str(a.work.resolve()/'installed-client-results.xml'))
 # Core can be selected on its own even when the package contains native backends.
-run('cmake','-S',str(client),'-B',str(root/'core-client'),'-G','Ninja',f'-DCMAKE_PREFIX_PATH={relocated}','-DMKA_CLIENT_COMPONENTS=core',*extra)
+run('cmake','-S',str(client),'-B',str(root/'core-client'),'-G','Ninja','-DCMAKE_BUILD_TYPE=Release',f'-DCMAKE_PREFIX_PATH={relocated}','-DMKA_CLIENT_COMPONENTS=core',*extra)
 run('cmake','--build',str(root/'core-client'),'--parallel','2')
 run('ctest','--test-dir',str(root/'core-client'),'--no-tests=error','--output-on-failure')
-missing=subprocess.run(['cmake','-S',str(client),'-B',str(root/'unavailable-client'),'-G','Ninja',f'-DCMAKE_PREFIX_PATH={relocated}','-DMKA_CLIENT_COMPONENTS=asio',*extra],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+missing=subprocess.run(['cmake','-S',str(client),'-B',str(root/'unavailable-client'),'-G','Ninja','-DCMAKE_BUILD_TYPE=Release',f'-DCMAKE_PREFIX_PATH={relocated}','-DMKA_CLIENT_COMPONENTS=asio',*extra],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
 assert missing.returncode!=0 and 'not compiled in this package' in missing.stdout,missing.stdout
 print(f'Relocated package passed; producer source/build unavailable, artifacts in {root}')
