@@ -3,7 +3,9 @@
 #include "../../src/backend/windows/detail/wasapi_session.hpp"
 #include <array>
 #include <cmath>
+#include "../../examples/dsp/gain.hpp"
 import mka.audio.convert;
+import mka.audio.process;
 #include "planar_callbacks.hpp"
 using namespace wasapi_test;
 namespace {
@@ -71,4 +73,41 @@ TEST(WasapiPlanar, NativeValid24BitsAreHighAlignedAndPaddingIsIgnored) {
     const std::array<float,4> input{1.0f,-1.0f,0.5f,0.0f};
     writeSamples<Conversion>(SampleKind::S24Msb32,reinterpret_cast<BYTE*>(native.data()),4,input.data(),4);
     EXPECT_EQ(native[0],0x7FFFFF00u);EXPECT_EQ(native[1],0x80000100u);EXPECT_EQ(native[2],0x40000000u);EXPECT_EQ(native[3],0u);
+}
+
+TEST_F(DevicesFixture, Float32CaptureApplicationDspAndNativeRenderKeepDistinctChannelSamples) {
+    auto input=add(L"input",eCapture);auto output=add(L"output",eRender);
+    ControlThread control(api());Session captureSession(control),renderSession(control);
+    ASSERT_EQ(captureSession.open({"input",eCapture,2,48000,256,SampleKind::F32}),S_OK);
+    ASSERT_EQ(renderSession.open({"output",eRender,2,48000,256,SampleKind::F32}),S_OK);
+    struct Clip {
+        mka_example::Gain dsp;std::array<std::array<float,7>,2> samples{};unsigned captures=0;
+    } clip;
+    auto& nativeInput=*input->client->capture.Get();nativeInput.count=1;nativeInput.head=0;nativeInput.packets[0]={7,0};
+    for(std::size_t i=0;i<7;++i){
+        const float left=0.25f,right=-0.5f;
+        std::memcpy(nativeInput.bytes.data()+i*8,&left,4);std::memcpy(nativeInput.bytes.data()+i*8+4,&right,4);
+    }
+    auto captureCallbacks=converters();captureCallbacks.user=&clip;
+    captureCallbacks.process=+[](void* user,const float* const* in,UINT32 inputs,float* const*,UINT32,UINT32 frames) noexcept {
+        auto& state=*static_cast<Clip*>(user);
+        if(frames!=7 || inputs!=2)return;
+        float* out[]{state.samples[0].data(),state.samples[1].data()};
+        state.dsp.process(mka::audio::core::AudioProcessContext{{in,inputs},{out,2},frames});++state.captures;
+    };
+    ASSERT_EQ(captureSession.processCapture(captureCallbacks),S_OK);ASSERT_EQ(clip.captures,1u);
+    output->client->padding=473; // Seven native frames available in the shared buffer.
+    auto renderCallbacks=converters();renderCallbacks.user=&clip;
+    renderCallbacks.process=+[](void* user,const float* const*,UINT32,float* const* out,UINT32 outputs,UINT32 frames) noexcept {
+        auto& state=*static_cast<Clip*>(user);
+        for(UINT32 ch=0;ch<outputs;++ch)for(UINT32 i=0;i<frames;++i)out[ch][i]=i<7?state.samples[ch][i]:0.0f;
+    };
+    ASSERT_EQ(renderSession.renderOnce(renderCallbacks),S_OK);
+    const auto& nativeOutput=output->client->render->bytes;
+    for(std::size_t i=0;i<7;++i){
+        float left=0,right=0;std::memcpy(&left,nativeOutput.data()+i*8,4);std::memcpy(&right,nativeOutput.data()+i*8+4,4);
+        EXPECT_FLOAT_EQ(left,0.125f);EXPECT_FLOAT_EQ(right,-0.25f);
+    }
+    EXPECT_EQ(output->client->render->released,7u);EXPECT_EQ(clip.dsp.frames.load(),7u);
+    ASSERT_EQ(captureSession.close(),S_OK);ASSERT_EQ(renderSession.close(),S_OK);input.Reset();output.Reset();
 }
