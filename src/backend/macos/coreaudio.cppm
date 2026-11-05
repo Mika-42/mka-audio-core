@@ -1,7 +1,7 @@
 module;
 #include <expected>
 #include <vector>
-#include "detail/devices.hpp"
+#include "detail/session.hpp"
 export module mka.audio.backend.coreaudio;
 export import mka.audio.backend.abstract;
 
@@ -24,9 +24,27 @@ protected:
         }
         return endpoints;
     }
-    Result open_(const EndpointConfig&) override { return std::unexpected{ErrorType::ConfigurationFailed}; }
+    Result open_(const EndpointConfig& config) override {
+        if(config.format!=Format::Float32)return std::unexpected{ErrorType::FormatNotSupported};
+        return translate(session_.open({config.id,config.direction!=Direction::Output,config.direction!=Direction::Input,
+            config.inputChannels,config.outputChannels,config.sampleRate,config.bufferSize}));
+    }
     Result start_() override { return std::unexpected{ErrorType::ConfigurationFailed}; }
     Result stop_() override { return {}; }
-    Result close_() override { return {}; }
+    Result close_() override { return translate(session_.close()); }
+private:
+    static Result translate(mka_coreaudio_detail::Result result) noexcept {
+        if(result)return {};
+        using Failure=mka_coreaudio_detail::Failure;
+        switch(result.error()){
+            case Failure::Unavailable:return std::unexpected{ErrorType::EndpointUnavailable};
+            case Failure::Format:return std::unexpected{ErrorType::FormatNotSupported};
+            case Failure::Channels:return std::unexpected{ErrorType::ChannelsNotSupported};
+            case Failure::Rate:return std::unexpected{ErrorType::SampleRateNotSupported};
+            case Failure::Buffer:return std::unexpected{ErrorType::BufferSizeNotSupported};
+            default:return std::unexpected{ErrorType::ConfigurationFailed};
+        }
+    }
+    mka_coreaudio_detail::Session session_;
 };
 }
