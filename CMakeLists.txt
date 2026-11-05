@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 4.0)
 
-project(mka-core-audio VERSION 0.1.0
+project(mka-core-audio VERSION 1.0.0
         DESCRIPTION "Backend-agnostic real-time audio framework"
         LANGUAGES CXX
 )
@@ -621,3 +621,5 @@ if(MKA_BUILD_TESTS)
 endif()
 
 include(cmake/Install.cmake)
+
+include(cmake/Release.cmake)
