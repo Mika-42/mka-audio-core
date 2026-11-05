@@ -49,6 +49,9 @@ jobs:
           echo "CXX=$(brew --prefix llvm)/bin/clang++" >> "$GITHUB_ENV"
       - run: cmake --preset ${{ matrix.preset }}
       - run: cmake --build --preset ${{ matrix.preset }} --parallel 2
+      - name: Verify sanitizer flags and a failing runtime witness
+        if: matrix.preset == 'macos-coreaudio-asan'
+        run: bash ci/verify_macos_asan.sh build/macos-coreaudio-asan
       - run: ctest --preset ${{ matrix.preset }} --output-junit "${{ github.workspace }}/junit-${{ matrix.preset }}.xml"
       - name: Hardware smoke tests or explicit device/permission skips
         if: matrix.preset == 'macos-coreaudio'
@@ -67,6 +70,7 @@ jobs:
             junit-${{ matrix.preset }}.xml
             junit-coreaudio-hardware.xml
             build/${{ matrix.preset }}/Testing/Temporary/LastTest.log
+            build/${{ matrix.preset }}/asan-witness.log
 
   macos-coreaudio-smoke:
     runs-on: macos-14

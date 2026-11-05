@@ -25,9 +25,15 @@ static void nativeSmoke(bool input) {
     std::atomic<unsigned> calls=0;
     ASSERT_TRUE(backend.setProcessFunction(+[](void* user,const AudioProcessContext&) noexcept {++*static_cast<std::atomic<unsigned>*>(user);},&calls));
     const auto opened=backend.open(cfg);
-    if(!opened)GTEST_SKIP()<<"Native endpoint cannot be opened in this session, ErrorType="<<static_cast<int>(opened.error());
+    if(!opened && opened.error()==ErrorType::EndpointUnavailable)
+        GTEST_SKIP()<<"Native endpoint is unavailable or permission was denied in this session.";
+    ASSERT_TRUE(opened)<<"Discovered native configuration must open; ErrorType="<<static_cast<int>(opened.error());
     const auto started=backend.start();
-    if(!started){ASSERT_TRUE(backend.close());GTEST_SKIP()<<"Native start unavailable (device/service/permission), ErrorType="<<static_cast<int>(started.error());}
+    if(!started){
+        ASSERT_TRUE(backend.close());
+        if(started.error()==ErrorType::EndpointUnavailable)GTEST_SKIP()<<"Native device/permission unavailable at start.";
+        FAIL()<<"Native start failed, ErrorType="<<static_cast<int>(started.error());
+    }
     const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(3);
     while(calls.load()<4 && !backend.status().failed && std::chrono::steady_clock::now()<end)std::this_thread::sleep_for(std::chrono::milliseconds(10));
     ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
