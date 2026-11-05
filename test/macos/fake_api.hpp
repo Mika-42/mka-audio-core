@@ -85,7 +85,7 @@ struct FakeApi {
         if(!f.canSet)return kAudioHardwareIllegalOperationError;
         if(address->mSelector==kAudioDevicePropertyNominalSampleRate && bytes==sizeof(Float64)){std::memcpy(&f.rate,value,bytes);return noErr;}
         if(address->mSelector==kAudioDevicePropertyBufferFrameSize && bytes==sizeof(UInt32)){
-            std::memcpy(&f.frames,value,bytes);if(f.roundFrames)++f.frames;return noErr;
+            std::memcpy(&f.frames,value,bytes);if(f.roundFrames && f.frames==512)++f.frames;return noErr;
         }
         return kAudioHardwareUnknownPropertyError;
     }
