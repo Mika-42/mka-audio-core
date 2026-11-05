@@ -15,7 +15,14 @@ public:
     explicit Session(const Api& api=nativeApi()):api_(api){}
     Session(const Session&)=delete;
     Session& operator=(const Session&)=delete;
-    ~Session(){(void)close();}
+    ~Session(){
+        if(!close() && state_){
+            state_->accepting.store(false,std::memory_order_release);quiesce();
+            // A failing HAL removal must not leave a dangling native user pointer.
+            // Quarantine only on unrecoverable teardown failure; normal close frees all.
+            (void)state_.release();
+        }
+    }
     Result open(const Config& config) {
         if(opened_ || device_)return std::unexpected{Failure::Configuration};
         if(config.uid.find('\0')!=std::string::npos)return std::unexpected{Failure::Unavailable};
@@ -55,14 +62,43 @@ public:
         opened_=true;rollback.committed=true;
         return {};
     }
+    Result start(Callbacks callbacks) noexcept {
+        if(!opened_ || !proc_ || running_)return std::unexpected{Failure::Configuration};
+        UInt32 alive=0,frames=0;Float64 rate=0;
+        if(!read(api_,device_,kAudioDevicePropertyDeviceIsAlive,alive) || !alive)return std::unexpected{Failure::Unavailable};
+        if(!read(api_,device_,kAudioDevicePropertyNominalSampleRate,rate) || rate!=config_.rate)return std::unexpected{Failure::Rate};
+        if(!read(api_,device_,kAudioDevicePropertyBufferFrameSize,frames) || frames!=config_.frames)return std::unexpected{Failure::Buffer};
+        quiesce();state_->callbacks=callbacks;state_->failed.store(false,std::memory_order_release);
+        state_->accepting.store(true,std::memory_order_release);
+        running_=true; // Even a failed start may have partially activated the IOProc.
+        if(api_.start(device_,proc_)!=noErr){
+            state_->accepting.store(false,std::memory_order_release);
+            if(api_.stop(device_,proc_)==noErr)running_=false;
+            quiesce();return std::unexpected{Failure::Configuration};
+        }
+        return {};
+    }
+    Result stop() noexcept {
+        if(!state_)return {};
+        state_->accepting.store(false,std::memory_order_release);
+        if(running_){
+            if(api_.stop(device_,proc_)!=noErr){quiesce();return std::unexpected{Failure::Configuration};}
+            running_=false;
+        }
+        quiesce();return {};
+    }
     Result close() noexcept {
+        (void)stop();
         if(proc_){
             if(api_.destroy(device_,proc_)!=noErr)return std::unexpected{Failure::Configuration};
             proc_=nullptr;
         }
-        state_.reset();restore();opened_=false;device_=kAudioObjectUnknown;return {};
+        running_=false;quiesce();state_.reset();restore();opened_=false;device_=kAudioObjectUnknown;return {};
     }
 private:
+    void quiesce() noexcept {
+        while(state_ && state_->active.load(std::memory_order_acquire))std::this_thread::yield();
+    }
     template<class T>
     bool setExact(AudioObjectPropertySelector selector,T value) noexcept {
         const auto address=property(selector);Boolean allowed=false;
@@ -115,6 +151,6 @@ private:
     const Api& api_;
     Config config_;
     AudioObjectID device_=kAudioObjectUnknown;
-    bool opened_=false;
+    bool opened_=false,running_=false;
 };
 }

@@ -29,8 +29,15 @@ protected:
         return translate(session_.open({config.id,config.direction!=Direction::Output,config.direction!=Direction::Input,
             config.inputChannels,config.outputChannels,config.sampleRate,config.bufferSize}));
     }
-    Result start_() override { return std::unexpected{ErrorType::ConfigurationFailed}; }
-    Result stop_() override { return {}; }
+    Result start_() override {
+        return translate(session_.start({this,callback?+[](void* user,const float* const* input,UInt32 inputs,
+            float* const* output,UInt32 outputs,UInt32 frames) noexcept {
+                auto& self=*static_cast<CoreAudio*>(user);
+                self.callback(self.userData,AudioProcessContext{{input,inputs},{output,outputs},frames});
+            }:nullptr,+[](void* user) noexcept {static_cast<CoreAudio*>(user)->notifyFailed();},
+            +[](void* user) noexcept {static_cast<CoreAudio*>(user)->notifyXRun();}}));
+    }
+    Result stop_() override { return translate(session_.stop()); }
     Result close_() override { return translate(session_.close()); }
 private:
     static Result translate(mka_coreaudio_detail::Result result) noexcept {
