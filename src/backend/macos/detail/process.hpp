@@ -35,8 +35,39 @@ struct ProcessState {
             if(buffer.mData)std::memset(buffer.mData,0,buffer.mDataByteSize);
         }
     }
-    void process(const AudioBufferList*,AudioBufferList* out) noexcept {
+    // HAL buffers may be interleaved per stream or planar. Flatten their channels
+    // into independent Float32 scratch buffers; never lend an interleaved pointer.
+    bool frames(const AudioBufferList* list,UInt32 channels,UInt32& count) const noexcept {
+        if(!list || !list->mNumberBuffers || list->mNumberBuffers>1024)return false;
+        UInt32 total=0;count=0;
+        for(UInt32 b=0;b<list->mNumberBuffers;++b){
+            const auto& buffer=list->mBuffers[b];
+            if(!buffer.mNumberChannels)continue;
+            if(buffer.mNumberChannels>channels-total || !buffer.mData)return false;
+            const auto stride=sizeof(float)*buffer.mNumberChannels;
+            if(buffer.mDataByteSize%stride)return false;
+            const auto available=static_cast<UInt32>(buffer.mDataByteSize/stride);
+            if(!available || available>capacity || (count && count!=available))return false;
+            count=available;total+=buffer.mNumberChannels;
+        }
+        return total==channels && count>0;
+    }
+    void readInput(const AudioBufferList* list,UInt32 count) noexcept {
+        UInt32 channel=0;
+        for(UInt32 b=0;b<list->mNumberBuffers;++b){
+            const auto& buffer=list->mBuffers[b];
+            const auto* data=static_cast<const float*>(buffer.mData);
+            for(UInt32 ch=0;ch<buffer.mNumberChannels;++ch,++channel)
+                for(UInt32 i=0;i<count;++i)input[channel][i]=data[i*buffer.mNumberChannels+ch];
+        }
+    }
+    void process(const AudioBufferList* in,AudioBufferList* out) noexcept {
         silence(out);
+        UInt32 count=0;
+        if(inputs && !frames(in,inputs,count)){fail();return;}
+        if(inputs)readInput(in,count);
+        if(callbacks.process && !outputs && count)
+            callbacks.process(callbacks.user,inputPointers.data(),inputs,nullptr,0,count);
     }
 };
 inline OSStatus ioProc(AudioObjectID,const AudioTimeStamp*,const AudioBufferList* input,
