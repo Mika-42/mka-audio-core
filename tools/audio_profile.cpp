@@ -96,6 +96,7 @@ int main(int argc,char** argv){
     const auto status=backend->status();const auto closed=backend->close();
     if(!stopped || !closed){std::cerr<<"Stop/close failed\n";return 1;}
     const auto service=mka_audit::serviceTime(recorder);
+    const auto jitter=mka_audit::jitter(recorder,48000);
     std::ofstream file;if(!path.empty()){file.open(path);if(!file)return 2;}
     std::ostream& out=path.empty()?std::cout:file;
     out<<"{\"backend\":";quote(out,backendName);out<<",\"device\":";quote(out,device);
@@ -107,6 +108,8 @@ int main(int argc,char** argv){
     else out<<100.0*static_cast<double>(cpuEnd-cpuBegin)/CLOCKS_PER_SEC/(static_cast<double>(end-begin)/1e9);
     out<<",\"callbacks\":"<<recorder.calls.load()<<",\"frames\":"<<recorder.frames.load()<<",\"timing_samples\":"<<recorder.stored
        <<",\"dropped_timing_samples\":"<<recorder.dropped<<",\"service_mean_ns\":"<<service.mean<<",\"service_p99_ns\":"<<service.p99
+       <<",\"jitter_intervals\":"<<jitter.count<<",\"jitter_abs_mean_ns\":"<<jitter.mean
+       <<",\"jitter_abs_p99_ns\":"<<jitter.p99<<",\"jitter_abs_max_ns\":"<<jitter.max
        <<",\"xruns\":"<<status.xruns<<",\"failed\":"<<(status.failed?"true":"false")<<",\"realtime\":"<<static_cast<int>(status.realtime)<<"}\n";
     return !out || status.failed || !recorder.calls.load()?1:0;
 }
