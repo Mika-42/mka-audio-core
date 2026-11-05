@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <CoreAudio/CoreAudio.h>
+#include "../../src/backend/macos/detail/native.hpp"
 #include <type_traits>
 import mka.audio.backend.coreaudio;
 

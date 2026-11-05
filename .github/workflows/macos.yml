@@ -67,3 +67,17 @@ jobs:
             junit-${{ matrix.preset }}.xml
             junit-coreaudio-hardware.xml
             build/${{ matrix.preset }}/Testing/Temporary/LastTest.log
+
+  macos-coreaudio-smoke:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install compiler and module scanner
+        run: |
+          brew install llvm ninja cmake
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> "$GITHUB_ENV"
+      - run: cmake --preset macos-core -B build/macos-coreaudio-smoke -DMKA_BUILD_COREAUDIO=ON
+      - run: cmake --build build/macos-coreaudio-smoke --parallel 2
+      - run: ctest --test-dir build/macos-coreaudio-smoke -L unit --no-tests=error --output-on-failure
