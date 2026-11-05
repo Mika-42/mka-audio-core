@@ -65,6 +65,7 @@ public:
     }
     Result start(Callbacks callbacks) {
         if(!opened_ || !proc_ || running_)return std::unexpected{Failure::Configuration};
+        state_->invalidated.store(false,std::memory_order_release);
         UInt32 alive=0,frames=0;Float64 rate=0;
         if(!read(api_,device_,kAudioDevicePropertyDeviceIsAlive,alive) || !alive)return std::unexpected{Failure::Unavailable};
         if(!read(api_,device_,kAudioDevicePropertyNominalSampleRate,rate) || rate!=config_.rate)return std::unexpected{Failure::Rate};
@@ -75,7 +76,7 @@ public:
             if(!caps)return std::unexpected{Failure::Format};
             if(caps->channels!=(input?config_.inputs:config_.outputs))return std::unexpected{Failure::Channels};
         }
-        state_->invalidated.store(false,std::memory_order_release);
+        if(state_->invalidated.load(std::memory_order_acquire))return std::unexpected{Failure::Configuration};
         quiesce();state_->callbacks=callbacks;state_->failed.store(false,std::memory_order_release);
         state_->accepting.store(true,std::memory_order_release);
         running_=true; // Even a failed start may have partially activated the IOProc.
@@ -84,6 +85,7 @@ public:
             if(api_.stop(device_,proc_)==noErr)running_=false;
             quiesce();return std::unexpected{Failure::Configuration};
         }
+        if(state_->invalidated.load(std::memory_order_acquire))state_->fail();
         return {};
     }
     Result stop() noexcept {
@@ -116,6 +118,10 @@ private:
         std::vector<Listener> pending;
         for(auto selector:{kAudioDevicePropertyDeviceIsAlive,kAudioDevicePropertyNominalSampleRate,
             kAudioDevicePropertyBufferFrameSize,kAudioDeviceProcessorOverload})pending.push_back({device_,property(selector)});
+        for(auto selector:{kAudioDevicePropertyClockDomain,kAudioDevicePropertyClockSource}){
+            auto address=property(selector);
+            if(api_.has(device_,&address))pending.push_back({device_,address});
+        }
         for(bool input:{true,false}){
             if(!(input?config_.input:config_.output))continue;
             const auto scope=input?kAudioObjectPropertyScopeInput:kAudioObjectPropertyScopeOutput;
