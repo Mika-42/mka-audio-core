@@ -592,6 +592,15 @@ if(MKA_BUILD_EXAMPLES)
 endif()
 
 if(MKA_BUILD_TESTS)
+    add_executable(mka-audio-dsp-tests test/integration/test_dsp.cpp)
+    target_link_libraries(mka-audio-dsp-tests PRIVATE mka-core-audio GTest::gtest_main)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND MKA_ALLOCATOR_TESTS)
+        target_sources(mka-audio-dsp-tests PRIVATE test/integration/test_dsp_rt.cpp test/utils/alloc_probe.cpp)
+    endif()
+    gtest_discover_tests(mka-audio-dsp-tests TEST_PREFIX "dsp.")
+endif()
+
+if(MKA_BUILD_TESTS)
     set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ClassifyTests.cmake")
 endif()
 
