@@ -89,6 +89,22 @@
         "lhs": "${hostSystemName}",
         "rhs": "Darwin"
       }
+    },
+    {
+      "name": "macos-coreaudio",
+      "inherits": "macos-core",
+      "displayName": "macOS native CoreAudio and core",
+      "cacheVariables": {
+        "MKA_BUILD_COREAUDIO": "ON"
+      }
+    },
+    {
+      "name": "macos-coreaudio-asan",
+      "inherits": "macos-coreaudio",
+      "displayName": "macOS CoreAudio ASan and UBSan",
+      "cacheVariables": {
+        "MKA_SANITIZER": "address-undefined"
+      }
     }
   ],
   "buildPresets": [
@@ -126,6 +142,14 @@
     {
       "name": "macos-core",
       "configurePreset": "macos-core"
+    },
+    {
+      "name": "macos-coreaudio",
+      "configurePreset": "macos-coreaudio"
+    },
+    {
+      "name": "macos-coreaudio-asan",
+      "configurePreset": "macos-coreaudio-asan"
     }
   ],
   "testPresets": [
@@ -252,6 +276,42 @@
       "execution": {
         "noTestsAction": "error",
         "jobs": 2
+      }
+    },
+    {
+      "name": "macos-coreaudio",
+      "configurePreset": "macos-coreaudio",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "^unit$"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "jobs": 2
+      }
+    },
+    {
+      "name": "macos-coreaudio-asan",
+      "configurePreset": "macos-coreaudio-asan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "^unit$"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "jobs": 2
+      },
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
       }
     }
   ]

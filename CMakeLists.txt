@@ -518,7 +518,7 @@ if(MKA_BUILD_COREAUDIO)
     if(MKA_BUILD_TESTS)
         target_compile_definitions(mka-audio-coreaudio PRIVATE MKA_COREAUDIO_TESTING=1)
         add_executable(mka-audio-coreaudio-tests test/macos/test_coreaudio.cpp
-            test/macos/test_devices.cpp test/macos/test_process.cpp test/macos/test_lifecycle.cpp)
+            test/macos/test_devices.cpp test/macos/test_process.cpp test/macos/test_lifecycle.cpp test/macos/test_hardware.cpp)
         target_compile_definitions(mka-audio-coreaudio-tests PRIVATE MKA_COREAUDIO_TESTING=1)
         target_link_libraries(mka-audio-coreaudio-tests PRIVATE mka-audio-coreaudio GTest::gtest_main
             ${MKA_COREAUDIO_FRAMEWORK} ${MKA_COREFOUNDATION_FRAMEWORK})

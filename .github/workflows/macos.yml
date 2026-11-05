@@ -31,3 +31,39 @@ jobs:
           path: |
             junit-macos-core.xml
             build/macos-core/Testing/Temporary/LastTest.log
+
+  macos-coreaudio:
+    runs-on: macos-14
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [macos-coreaudio, macos-coreaudio-asan]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install C++26 compiler and module scanner
+        run: |
+          brew install llvm ninja cmake
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          echo "CC=$(brew --prefix llvm)/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> "$GITHUB_ENV"
+      - run: cmake --preset ${{ matrix.preset }}
+      - run: cmake --build --preset ${{ matrix.preset }} --parallel 2
+      - run: ctest --preset ${{ matrix.preset }} --output-junit "${{ github.workspace }}/junit-${{ matrix.preset }}.xml"
+      - name: Hardware smoke tests or explicit device/permission skips
+        if: matrix.preset == 'macos-coreaudio'
+        run: ctest --test-dir build/macos-coreaudio -L hardware --no-tests=error --output-on-failure --output-junit "${{ github.workspace }}/junit-coreaudio-hardware.xml"
+      - name: Build production library without test injection or GoogleTest
+        if: matrix.preset == 'macos-coreaudio'
+        run: |
+          cmake --preset macos-coreaudio -B build/macos-production -DMKA_BUILD_TESTS=OFF
+          cmake --build build/macos-production --parallel 2
+          python3 -c "import json; from pathlib import Path; c=json.loads(Path('build/macos-production/compile_commands.json').read_text()); assert all('MKA_COREAUDIO_TESTING' not in x['command'] and 'googletest' not in x['file'] for x in c)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.preset }}-tests
+          path: |
+            junit-${{ matrix.preset }}.xml
+            junit-coreaudio-hardware.xml
+            build/${{ matrix.preset }}/Testing/Temporary/LastTest.log
