@@ -40,6 +40,7 @@ TEST(CoreAudioDevices, ExactRatesFramesAndNativeReadbacksWithRetry) {
     EXPECT_EQ(fake.rate,48000);EXPECT_EQ(fake.frames,256u);
     fake.canSet=false;EXPECT_EQ(session.open(cfg).error(),Failure::Rate);fake.canSet=true;
     cfg.rate=48000;fake.roundFrames=true;EXPECT_EQ(session.open(cfg).error(),Failure::Buffer);
+    EXPECT_EQ(fake.frames,256u);
     fake.roundFrames=false;ASSERT_TRUE(session.open(cfg));EXPECT_TRUE(session.close());
 }
 TEST(CoreAudioDevices, NativeRegistrationFailuresRollBackAndLeaveReusableInstance) {
@@ -47,4 +48,12 @@ TEST(CoreAudioDevices, NativeRegistrationFailuresRollBackAndLeaveReusableInstanc
     fake.failCreate=1;EXPECT_FALSE(session.open(mac_test::config()));EXPECT_EQ(fake.destroys,0);
     fake.failAddAt=3;EXPECT_FALSE(session.open(mac_test::config()));EXPECT_TRUE(fake.listeners.empty());EXPECT_EQ(fake.destroys,1);
     ASSERT_TRUE(session.open(mac_test::config()));EXPECT_TRUE(session.close());EXPECT_TRUE(fake.listeners.empty());
+}
+
+TEST(CoreAudioDevices, FailedOpenCleanupIsRetriedBeforeOpeningAgain) {
+    mac_test::FakeApi fake;Session session(fake.api);
+    fake.failAddAt=2;fake.failDestroy=1;
+    EXPECT_FALSE(session.open(mac_test::config()));
+    ASSERT_TRUE(session.open(mac_test::config()));EXPECT_TRUE(session.close());
+    EXPECT_TRUE(fake.listeners.empty());
 }

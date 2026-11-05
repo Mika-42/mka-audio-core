@@ -24,7 +24,8 @@ public:
         }
     }
     Result open(const Config& config) {
-        if(opened_ || device_)return std::unexpected{Failure::Configuration};
+        if(opened_)return std::unexpected{Failure::Configuration};
+        if(device_ && !close())return std::unexpected{Failure::Configuration};
         if(config.uid.find('\0')!=std::string::npos)return std::unexpected{Failure::Unavailable};
         AudioObjectID selected=kAudioObjectUnknown;
         if(config.uid.empty()){
@@ -143,14 +144,17 @@ private:
         while(state_ && state_->active.load(std::memory_order_acquire))std::this_thread::yield();
     }
     template<class T>
-    bool setExact(AudioObjectPropertySelector selector,T value) noexcept {
+    bool setExact(AudioObjectPropertySelector selector,T value,T* observed=nullptr) noexcept {
         const auto address=property(selector);Boolean allowed=false;
         if(api_.settable(device_,&address,&allowed)!=noErr || !allowed)return false;
         if(api_.set(device_,&address,0,nullptr,sizeof(T),&value)!=noErr)return false;
         const auto until=std::chrono::steady_clock::now()+std::chrono::milliseconds(250);
         do {
             T actual{};
-            if(read(api_,device_,selector,actual) && actual==value)return true;
+            if(read(api_,device_,selector,actual)){
+                if(observed)*observed=actual;
+                if(actual==value)return true;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }while(std::chrono::steady_clock::now()<until);
         return false;
@@ -159,19 +163,20 @@ private:
         Float64 rate=0;UInt32 frames=0;
         if(!read(api_,device_,kAudioDevicePropertyNominalSampleRate,rate) || !integralRate(rate))return std::unexpected{Failure::Rate};
         if(!read(api_,device_,kAudioDevicePropertyBufferFrameSize,frames) || !frames)return std::unexpected{Failure::Buffer};
+        oldFrames_=frames;setFrames_=frames;
         if(rate!=config_.rate){
             auto ranges=arrayProperty<AudioValueRange>(api_,device_,kAudioDevicePropertyAvailableNominalSampleRates);
             if(!ranges || std::none_of(ranges->begin(),ranges->end(),[&](const auto& r){return contains(r,config_.rate);}))return std::unexpected{Failure::Rate};
-            oldRate_=rate;
-            if(!setExact(kAudioDevicePropertyNominalSampleRate,static_cast<Float64>(config_.rate)))return std::unexpected{Failure::Rate};
+            oldRate_=rate;setRate_=rate;
+            if(!setExact(kAudioDevicePropertyNominalSampleRate,static_cast<Float64>(config_.rate),&*setRate_))return std::unexpected{Failure::Rate};
         }
         // Re-read frames after changing rate; the HAL may have changed it too.
         if(!read(api_,device_,kAudioDevicePropertyBufferFrameSize,frames))return std::unexpected{Failure::Buffer};
+        setFrames_=frames;
         if(frames!=config_.frames){
             AudioValueRange range{};
             if(!read(api_,device_,kAudioDevicePropertyBufferFrameSizeRange,range) || !contains(range,config_.frames))return std::unexpected{Failure::Buffer};
-            oldFrames_=frames;
-            if(!setExact(kAudioDevicePropertyBufferFrameSize,config_.frames))return std::unexpected{Failure::Buffer};
+            if(!setExact(kAudioDevicePropertyBufferFrameSize,config_.frames,&*setFrames_))return std::unexpected{Failure::Buffer};
         }
         Float64 actualRate=0;UInt32 actualFrames=0;
         if(!read(api_,device_,kAudioDevicePropertyNominalSampleRate,actualRate) || actualRate!=config_.rate)return std::unexpected{Failure::Rate};
@@ -179,16 +184,18 @@ private:
         return {};
     }
     void restore() noexcept {
-        // Do not overwrite a setting that another HAL client has changed since open.
+        // Restore values observed after our writes, including an inexact native
+        // readback. Preserve a later setting selected by another HAL client.
         UInt32 frames=0;Float64 rate=0;
-        if(oldFrames_ && read(api_,device_,kAudioDevicePropertyBufferFrameSize,frames) && frames==config_.frames)
-            (void)setExact(kAudioDevicePropertyBufferFrameSize,*oldFrames_);
-        if(oldRate_ && read(api_,device_,kAudioDevicePropertyNominalSampleRate,rate) && rate==config_.rate)
+        const bool ownFrames=oldFrames_ && setFrames_
+            && read(api_,device_,kAudioDevicePropertyBufferFrameSize,frames) && frames==*setFrames_;
+        if(oldRate_ && setRate_ && read(api_,device_,kAudioDevicePropertyNominalSampleRate,rate) && rate==*setRate_)
             (void)setExact(kAudioDevicePropertyNominalSampleRate,*oldRate_);
-        oldFrames_.reset();oldRate_.reset();
+        if(ownFrames)(void)setExact(kAudioDevicePropertyBufferFrameSize,*oldFrames_);
+        oldFrames_.reset();oldRate_.reset();setFrames_.reset();setRate_.reset();
     }
-    std::optional<Float64> oldRate_;
-    std::optional<UInt32> oldFrames_;
+    std::optional<Float64> oldRate_,setRate_;
+    std::optional<UInt32> oldFrames_,setFrames_;
     std::unique_ptr<ProcessState> state_;
     AudioDeviceIOProcID proc_=nullptr;
     const Api& api_;
