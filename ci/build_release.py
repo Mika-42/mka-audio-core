@@ -39,6 +39,10 @@ def extract(archive,destination):
         with zipfile.ZipFile(archive) as container:
             for name in container.namelist():assert (destination/name).resolve().is_relative_to(destination.resolve()),name
             container.extractall(destination)
+            # Python's ZIP extractor does not restore Unix executable modes.
+            for member in container.infolist():
+                permissions=(member.external_attr>>16)&0o777
+                if member.create_system==3 and permissions:(destination/member.filename).chmod(permissions)
     else:
         with tarfile.open(archive) as container:
             for member in container.getmembers():assert (destination/member.name).resolve().is_relative_to(destination.resolve()),member.name
