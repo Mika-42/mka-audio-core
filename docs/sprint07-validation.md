@@ -34,7 +34,8 @@ Jitter is the absolute difference between successive callback-entry intervals
 and the preceding callback's `frames / rate` duration, so changing frame counts
 are respected. The report includes sample count and dropped records: saturated
 storage describes a prefix of the run, not a fabricated full-run distribution.
-Requested period, open/start/stop durations and callback service time do **not**
+The JSON `realtime` value follows the public enum: 0 = Unknown, 1 = No,
+2 = Yes; it is not a boolean. Requested period, open/start/stop durations and callback service time do **not**
 measure physical capture-to-speaker latency. ALSA null is unpaced and can consume
 one CPU core; virtual server measurements are not hardware performance claims.
 
