@@ -600,6 +600,12 @@ if(MKA_BUILD_TESTS)
     gtest_discover_tests(mka-audio-dsp-tests TEST_PREFIX "dsp.")
 endif()
 
+if(MKA_BUILD_TESTS AND MKA_BUILD_ALSA)
+    add_executable(mka-audio-alsa-switch-tests test/linux/alsa/test_switch.cpp)
+    target_link_libraries(mka-audio-alsa-switch-tests PRIVATE mka-audio-alsa ALSA::ALSA GTest::gtest_main)
+    gtest_discover_tests(mka-audio-alsa-switch-tests TEST_PREFIX "alsa.switch.")
+endif()
+
 if(MKA_BUILD_TESTS)
     set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ClassifyTests.cmake")
 endif()

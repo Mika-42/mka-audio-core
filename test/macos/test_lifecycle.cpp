@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "fake_api.hpp"
 #include <thread>
+#include "../../examples/dsp/gain.hpp"
 import mka.audio.backend.coreaudio;
 using namespace mka::audio::core;
 using namespace mka_coreaudio_detail;
@@ -82,4 +83,23 @@ TEST(CoreAudioLifecycle, FailedEventIsDeliveredOnceOffTheNativeCallbackThread) {
     while(!events.calls.load() && std::chrono::steady_clock::now()<end)std::this_thread::sleep_for(std::chrono::milliseconds(1));
     ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
     EXPECT_EQ(events.calls.load(),1u);EXPECT_FALSE(events.wrongThread.load());
+}
+
+TEST(CoreAudioLifecycle, SwitchesDeviceUidsAfterClosingAndReplacesDspUserData) {
+    mac_test::FakeApi fake;fake.twoDevices=true;
+    auto node=std::make_unique<mka_example::Gain>();CoreAudio backend;
+    auto bind=[&]{return backend.setProcessFunction(+[](void* user,const AudioProcessContext& context) noexcept {
+        static_cast<mka_example::Gain*>(user)->process(context);
+    },node.get());};
+    ASSERT_TRUE(bind());ASSERT_TRUE(backend.open(publicConfig()));ASSERT_TRUE(backend.start());
+    mac_test::Buffer output(2,256,1);fake.pump(nullptr,&output.list);EXPECT_EQ(node->calls.load(),1u);
+    auto next=publicConfig();next.id="fake-secondary";
+    EXPECT_EQ(backend.open(next).error(),ErrorType::InvalidState);
+    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());node.reset();
+    auto missing=next;missing.id="not-present";EXPECT_EQ(backend.open(missing).error(),ErrorType::EndpointUnavailable);
+    node=std::make_unique<mka_example::Gain>();ASSERT_TRUE(bind());
+    ASSERT_TRUE(backend.open(next));ASSERT_TRUE(backend.start());fake.pump(nullptr,&output.list);
+    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
+    EXPECT_EQ(node->calls.load(),1u);EXPECT_EQ(fake.openedObjects,(std::vector<AudioObjectID>{101,102}));
+    EXPECT_EQ(fake.creates,fake.destroys);EXPECT_TRUE(fake.listeners.empty());
 }

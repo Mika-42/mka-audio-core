@@ -2,6 +2,7 @@
 #include <array>
 #include <cstdint>
 #include <expected>
+#include <memory>
 #include <type_traits>
 #include <vector>
 #include <gtest/gtest.h>
@@ -57,4 +58,24 @@ TEST(DspBoundary, CorePreservesActualCallbackSizesAndDoesNotAccumulateDspBlocks)
     for(std::size_t i=0;i<sizes.size();++i){transport.emit(sizes[i]);EXPECT_EQ(node.calls,i+1);}
     ASSERT_TRUE(transport.stop());ASSERT_TRUE(transport.close());
     EXPECT_EQ(node.sizes,sizes);EXPECT_EQ(node.gain.frames.load(),150u);
+}
+
+TEST(DspEndpointSwitch, StopCloseOpenStartReplacesGeometryAndFreedUserContext) {
+    auto processor=std::make_unique<mka_example::Gain>();
+    dsp_test::Transport transport;
+    auto bind=[&]{return transport.setProcessFunction(+[](void* user,const AudioProcessContext& context) noexcept {
+        static_cast<mka_example::Gain*>(user)->process(context);
+    },processor.get());};
+    ASSERT_TRUE(bind());
+    const EndpointConfig first{"A",Direction::Duplex,1,2,48000,Format::Float32,64};
+    const EndpointConfig second{"B",Direction::Duplex,2,1,44100,Format::Float32,32};
+    ASSERT_TRUE(transport.open(first));ASSERT_TRUE(transport.start());transport.emit(17);
+    EXPECT_EQ(transport.open(second).error(),ErrorType::InvalidState);
+    ASSERT_TRUE(transport.stop());ASSERT_TRUE(transport.close());EXPECT_EQ(processor->frames.load(),17u);
+    processor.reset(); // No borrowed callback context may survive stop/close.
+    EXPECT_EQ(transport.open({"absent",Direction::Output,0,1,48000,Format::Float32,32}).error(),ErrorType::EndpointUnavailable);
+    processor=std::make_unique<mka_example::Gain>();ASSERT_TRUE(bind());
+    ASSERT_TRUE(transport.open(second));ASSERT_TRUE(transport.start());transport.emit(3);transport.emit(29);
+    ASSERT_TRUE(transport.stop());ASSERT_TRUE(transport.close());
+    EXPECT_EQ(processor->calls.load(),2u);EXPECT_EQ(processor->frames.load(),32u);
 }
