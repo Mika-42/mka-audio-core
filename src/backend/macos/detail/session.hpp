@@ -3,6 +3,7 @@
 #include "process.hpp"
 #include <memory>
 #include <expected>
+#include <initializer_list>
 #include <chrono>
 #include <thread>
 
@@ -114,7 +115,7 @@ private:
     struct Listener {AudioObjectID object;AudioObjectPropertyAddress address;};
     Result listen() {
         std::vector<Listener> pending;
-        for(auto selector:{kAudioDevicePropertyDeviceIsAlive,kAudioDevicePropertyNominalSampleRate,
+        for(auto selector:std::initializer_list<AudioObjectPropertySelector>{kAudioDevicePropertyDeviceIsAlive,kAudioDevicePropertyNominalSampleRate,
             kAudioDevicePropertyBufferFrameSize,kAudioDeviceProcessorOverload})pending.push_back({device_,property(selector)});
         for(bool input:{true,false}){
             if(!(input?config_.input:config_.output))continue;
