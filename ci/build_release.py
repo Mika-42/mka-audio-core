@@ -60,7 +60,7 @@ for generator in ('TGZ','ZIP'):
     assert json.loads(manifests[0].read_text())==metadata
     demos=list(unpacked.rglob('mka-dsp-example'+suffix));assert len(demos)==1;run(str(demos[0]))
     client_build=work/f'client-{generator}'
-    run('cmake','-S',str(client_source),'-B',str(client_build),'-G','Ninja','-DCMAKE_BUILD_TYPE=Release',f'-DmkaAudioCore_DIR={configs[0].parent}',f'-DMKA_CLIENT_COMPONENTS={components}',*extra)
+    run('cmake','-S',str(client_source),'-B',str(client_build),'-G','Ninja','-DCMAKE_BUILD_TYPE=Release','-DMKA_CLIENT_VERSION=1.0',f'-DmkaAudioCore_DIR={configs[0].parent}',f'-DMKA_CLIENT_COMPONENTS={components}',*extra)
     run('cmake','--build',str(client_build),'--parallel','2')
     run('ctest','--test-dir',str(client_build),'--no-tests=error','--output-on-failure','--output-junit',str(artifacts/f'junit-package-{generator}.xml'))
     packages.append(archive)
