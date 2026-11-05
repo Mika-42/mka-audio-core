@@ -56,3 +56,30 @@ TEST(CoreAudioLifecycle, ThousandCyclesReleaseEveryRegistrationAndPreserveUserDa
     }
     EXPECT_EQ(calls,1000);EXPECT_EQ(fake.creates,fake.destroys);EXPECT_TRUE(fake.listeners.empty());
 }
+
+TEST(CoreAudioLifecycle, PermissionDeniedStartAndRemovedDeviceStopAreMappedWithoutStrandingRunningState) {
+    mac_test::FakeApi fake;CoreAudio backend;ASSERT_TRUE(backend.open(publicConfig()));
+    fake.startStatus=kAudioDevicePermissionsError;
+    const auto denied=backend.start();ASSERT_FALSE(denied);EXPECT_EQ(denied.error(),ErrorType::EndpointUnavailable);
+    fake.startStatus=noErr;ASSERT_TRUE(backend.start());
+    fake.alive=0;fake.event(kAudioDevicePropertyDeviceIsAlive);fake.stopStatus=kAudioHardwareBadDeviceError;
+    EXPECT_TRUE(backend.stop());EXPECT_TRUE(backend.close());
+}
+TEST(CoreAudioLifecycle, FailedEventIsDeliveredOnceOffTheNativeCallbackThread) {
+    mac_test::FakeApi fake;CoreAudio backend;
+    struct Events {std::atomic<unsigned> calls=0;std::atomic<bool> wrongThread=false;std::thread::id native;} events;
+    events.native=std::this_thread::get_id();
+    ASSERT_TRUE(backend.setEventHandler(+[](void* user,const Event& event) noexcept {
+        auto& state=*static_cast<Events*>(user);
+        if(event.type==EventType::Failed){
+            if(std::this_thread::get_id()==state.native)state.wrongThread=true;
+            ++state.calls;
+        }
+    },&events));
+    ASSERT_TRUE(backend.open(publicConfig()));ASSERT_TRUE(backend.start());
+    fake.event(kAudioDevicePropertyNominalSampleRate);fake.event(kAudioDevicePropertyDeviceIsAlive);
+    const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+    while(!events.calls.load() && std::chrono::steady_clock::now()<end)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
+    EXPECT_EQ(events.calls.load(),1u);EXPECT_FALSE(events.wrongThread.load());
+}

@@ -86,15 +86,20 @@ struct Capabilities {UInt32 channels=0;std::vector<UInt32> rates,buffers;};
 inline std::optional<Capabilities> capabilities(const Api& api,AudioObjectID object,AudioObjectPropertyScope scope) {
     const auto count=channelCount(api,object,scope);
     if(!count || !*count)return std::nullopt;
+    Float64 rate=0;
+    if(!read(api,object,kAudioDevicePropertyNominalSampleRate,rate) || !integralRate(rate))return std::nullopt;
     const auto streams=arrayProperty<AudioStreamID>(api,object,kAudioDevicePropertyStreams,scope);
     if(!streams || streams->empty())return std::nullopt;
+    UInt32 streamChannels=0;
     for(auto stream:*streams){
         AudioStreamBasicDescription format{};
-        if(!read(api,stream,kAudioStreamPropertyVirtualFormat,format) || !float32(format))return std::nullopt;
+        if(!read(api,stream,kAudioStreamPropertyVirtualFormat,format) || !float32(format)
+            || format.mSampleRate!=rate || format.mChannelsPerFrame>*count-streamChannels)return std::nullopt;
+        streamChannels+=format.mChannelsPerFrame;
     }
-    Float64 rate=0;UInt32 frames=0;AudioValueRange bufferRange{};
-    if(!read(api,object,kAudioDevicePropertyNominalSampleRate,rate) || !integralRate(rate)
-        || !read(api,object,kAudioDevicePropertyBufferFrameSize,frames) || !frames)return std::nullopt;
+    if(streamChannels!=*count)return std::nullopt;
+    UInt32 frames=0;AudioValueRange bufferRange{};
+    if(!read(api,object,kAudioDevicePropertyBufferFrameSize,frames) || !frames)return std::nullopt;
     Capabilities caps{*count,{static_cast<UInt32>(rate)},{frames}};
     auto append=[](std::vector<UInt32>& values,UInt32 value){
         if(value && std::find(values.begin(),values.end(),value)==values.end())values.push_back(value);
