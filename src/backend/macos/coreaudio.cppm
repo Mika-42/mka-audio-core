@@ -1,7 +1,7 @@
 module;
 #include <expected>
 #include <vector>
-#include <CoreAudio/CoreAudio.h>
+#include "detail/native.hpp"
 export module mka.audio.backend.coreaudio;
 export import mka.audio.backend.abstract;
 
