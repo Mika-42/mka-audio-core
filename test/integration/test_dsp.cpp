@@ -61,21 +61,30 @@ TEST(DspBoundary, CorePreservesActualCallbackSizesAndDoesNotAccumulateDspBlocks)
 }
 
 TEST(DspEndpointSwitch, StopCloseOpenStartReplacesGeometryAndFreedUserContext) {
-    auto processor=std::make_unique<mka_example::Gain>();
+    struct Processor {
+        mka_example::Gain gain;std::uint32_t inputs,outputs;bool geometryOk=true;
+        Processor(std::uint32_t in,std::uint32_t out):inputs(in),outputs(out){}
+        void process(const AudioProcessContext& context) noexcept {
+            geometryOk &= context.input.count==inputs && context.output.count==outputs;
+            gain.process(context);
+        }
+    };
+    auto processor=std::make_unique<Processor>(1,2);
     dsp_test::Transport transport;
     auto bind=[&]{return transport.setProcessFunction(+[](void* user,const AudioProcessContext& context) noexcept {
-        static_cast<mka_example::Gain*>(user)->process(context);
+        static_cast<Processor*>(user)->process(context);
     },processor.get());};
     ASSERT_TRUE(bind());
     const EndpointConfig first{"A",Direction::Duplex,1,2,48000,Format::Float32,64};
     const EndpointConfig second{"B",Direction::Duplex,2,1,44100,Format::Float32,32};
     ASSERT_TRUE(transport.open(first));ASSERT_TRUE(transport.start());transport.emit(17);
     EXPECT_EQ(transport.open(second).error(),ErrorType::InvalidState);
-    ASSERT_TRUE(transport.stop());ASSERT_TRUE(transport.close());EXPECT_EQ(processor->frames.load(),17u);
-    processor.reset(); // No borrowed callback context may survive stop/close.
+    ASSERT_TRUE(transport.stop());ASSERT_TRUE(transport.close());EXPECT_EQ(processor->gain.frames.load(),17u);EXPECT_TRUE(processor->geometryOk);
+    auto replacement=std::make_unique<Processor>(2,1); // Allocate before freeing the old node: distinct addresses.
+    processor.reset();
     EXPECT_EQ(transport.open({"absent",Direction::Output,0,1,48000,Format::Float32,32}).error(),ErrorType::EndpointUnavailable);
-    processor=std::make_unique<mka_example::Gain>();ASSERT_TRUE(bind());
+    processor=std::move(replacement);ASSERT_TRUE(bind());
     ASSERT_TRUE(transport.open(second));ASSERT_TRUE(transport.start());transport.emit(3);transport.emit(29);
     ASSERT_TRUE(transport.stop());ASSERT_TRUE(transport.close());
-    EXPECT_EQ(processor->calls.load(),2u);EXPECT_EQ(processor->frames.load(),32u);
+    EXPECT_EQ(processor->gain.calls.load(),2u);EXPECT_EQ(processor->gain.frames.load(),32u);EXPECT_TRUE(processor->geometryOk);
 }

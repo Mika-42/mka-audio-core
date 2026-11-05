@@ -95,9 +95,10 @@ TEST(CoreAudioLifecycle, SwitchesDeviceUidsAfterClosingAndReplacesDspUserData) {
     mac_test::Buffer output(2,256,1);fake.pump(nullptr,&output.list);EXPECT_EQ(node->calls.load(),1u);
     auto next=publicConfig();next.id="fake-secondary";
     EXPECT_EQ(backend.open(next).error(),ErrorType::InvalidState);
-    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());node.reset();
+    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
+    auto replacement=std::make_unique<mka_example::Gain>();node.reset();
     auto missing=next;missing.id="not-present";EXPECT_EQ(backend.open(missing).error(),ErrorType::EndpointUnavailable);
-    node=std::make_unique<mka_example::Gain>();ASSERT_TRUE(bind());
+    node=std::move(replacement);ASSERT_TRUE(bind());
     ASSERT_TRUE(backend.open(next));ASSERT_TRUE(backend.start());fake.pump(nullptr,&output.list);
     ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
     EXPECT_EQ(node->calls.load(),1u);EXPECT_EQ(fake.openedObjects,(std::vector<AudioObjectID>{101,102}));

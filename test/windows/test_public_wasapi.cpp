@@ -107,9 +107,10 @@ TEST_F(PublicFixture, SwitchesExactEndpointIdsAfterCloseAndReplacesFreedDspConte
     ASSERT_TRUE(bind());ASSERT_TRUE(backend.open(config("output-a")));ASSERT_TRUE(backend.start());
     SetEvent(first->client->audioEvent);ASSERT_TRUE(waitFor([&]{return node->calls.load()>0;}));
     EXPECT_EQ(backend.open(config("output-b")).error(),ErrorType::InvalidState);
-    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());node.reset();
+    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
+    auto replacement=std::make_unique<mka_example::Gain>();node.reset();
     EXPECT_EQ(backend.open(config("missing")).error(),ErrorType::EndpointUnavailable);
-    node=std::make_unique<mka_example::Gain>();ASSERT_TRUE(bind());
+    node=std::move(replacement);ASSERT_TRUE(bind());
     ASSERT_TRUE(backend.open(config("output-b")));ASSERT_TRUE(backend.start());
     SetEvent(second->client->audioEvent);ASSERT_TRUE(waitFor([&]{return node->calls.load()>0;}));
     ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
