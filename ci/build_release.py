@@ -45,8 +45,9 @@ def extract(archive,destination):
             container.extractall(destination,filter='data')
 for generator in ('TGZ','ZIP'):
     run('cpack','-G',generator,'--config',str(build/'CPackConfig.cmake'),'-B',str(artifacts))
-    candidates=list(artifacts.glob('*.zip' if generator=='ZIP' else '*.tar.gz'));assert len(candidates)==1,candidates
-    archive=candidates[0];unpacked=work/f'unpacked-{generator}';extract(archive,unpacked)
+    basename=f"mka-audio-core-{metadata['version']}-candidate-{metadata['system']}-{metadata['architecture']}"
+    archive=artifacts/(basename+('.zip' if generator=='ZIP' else '.tar.gz'));assert archive.is_file(),archive
+    unpacked=work/f'unpacked-{generator}';extract(archive,unpacked)
     configs=list(unpacked.rglob('mkaAudioCoreConfig.cmake'));assert len(configs)==1
     for path in unpacked.rglob('*.cmake'):
         text=path.read_text().replace('\\','/')

@@ -17,9 +17,14 @@ endif()
 configure_file(cmake/release-metadata.json.in "${CMAKE_CURRENT_BINARY_DIR}/release-metadata.json" @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/release-metadata.json"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/mka-audio-core)
-install(FILES README.md CHANGELOG.md docs/backend-support.md docs/release-diagnostics.md docs/release-v1.md
-    DESTINATION ${CMAKE_INSTALL_DOCDIR})
+install(FILES README.md CHANGELOG.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+install(DIRECTORY docs/ DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs FILES_MATCHING PATTERN "*.md")
+install(DIRECTORY doc/ DESTINATION ${CMAKE_INSTALL_DOCDIR}/doc FILES_MATCHING PATTERN "*.md")
+install(DIRECTORY examples/ DESTINATION ${CMAKE_INSTALL_DOCDIR}/examples
+    FILES_MATCHING PATTERN "*.md" PATTERN "*.hpp" PATTERN "*.cpp")
 if(TARGET mka-dsp-example)
     install(TARGETS mka-dsp-example RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-include(CPack)
+if(PROJECT_IS_TOP_LEVEL)
+    include(CPack)
+endif()
