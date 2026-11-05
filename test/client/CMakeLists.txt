@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 4.0)
 project(mka-module-client LANGUAGES CXX)
+# BMI and client must use the same standard dialect.
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(MKA_BUILD_TESTS OFF CACHE BOOL "Client must not depend on GoogleTest" FORCE)
 add_subdirectory("${MKA_SOURCE_DIR}" producer)
 enable_testing()
