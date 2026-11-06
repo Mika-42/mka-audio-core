@@ -1240,10 +1240,13 @@ immediately. It joins an in-flight handler before returning and cancels pending
 delivery. Handlers must finish promptly: a blocking user handler cannot have a
 hard shutdown deadline without abandoning live user data. No thread is detached.
 
-ALSA requires an exact period of `bufferSize` frames and a ring of exactly three
-whole periods. It reads back the rate, period, period count and ring size after
-applying hardware parameters. Fractional/nearest periods or a different ring
-return `BufferSizeNotSupported`; failed native readbacks return `ConfigurationFailed`.
+ALSA requires an exact period of `bufferSize` frames. The native ring uses at least
+two whole periods; three are preferred, but the count follows the hardware
+constraints (for example, the AMD acp63 capture driver requires four). It reads
+back the rate, period, negotiated period count and ring size after applying
+hardware parameters. A rounded callback period, fractional ring or inconsistent
+readback returns `BufferSizeNotSupported`; failed native readbacks return
+`ConfigurationFailed`. The negotiated ring count does not change the callback size.
 
 An ALSA mmap chunk with no frames or an invalid ring range is treated as an xrun,
 not retried in a tight transfer loop. Recovery drops/prepares/prefills/restarts the
@@ -1408,3 +1411,7 @@ CMake currently recognizes MSVC's `/std:c++latest` under `cxx_std_23`, not
 `cxx_std_26`; the Windows build uses that CMake feature while compiling in
 `/std:c++latest` draft mode. Other compilers continue to require `cxx_std_26`.
 This does not claim that MSVC implements every future C++26 language feature.
+
+For direct ALSA sine/record-and-replay tests, use the separate audio test executable
+and explicit input/output PCMs. See [manual ALSA diagnosis](docs/manual-alsa.md)
+for commands, signal levels, bounded waits and hardware mixer/ownership checks.
