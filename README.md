@@ -10,6 +10,19 @@ The project is built around one central idea:
 
 The framework is intended to become the audio foundation of a future DAW and other audio software developed within the MKA ecosystem.
 
+## Current platform support
+
+| Platform | Backends | Operational support |
+|---|---|---|
+| Linux | ALSA, JACK, PipeWire, PulseAudio | **Supported and functional** — all four Linux backends are covered. |
+| Windows | WASAPI; ASIO/WMME/DirectSound under assessment | **Not yet supported** — operational validation is in progress. |
+| macOS | CoreAudio | **Not yet supported** — operational validation is in progress. |
+
+Linux support covers the documented functionality of each backend. The
+[backend support matrix](docs/backend-support.md) details formats, directions and
+duplex constraints. Windows and macOS already have implementations and CI checks;
+complete operational validation on those platforms remains pending.
+
 ---
 
 ## Goals
