@@ -1,11 +1,13 @@
 #include <pipewire/pipewire.h>
 #include <spa/param/audio/format-utils.h>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <expected>
 #include <string>
+#include <cstring>
 #include <thread>
 #include <gtest/gtest.h>
 #include "timeline.hpp"
@@ -22,6 +24,11 @@ class Pair {
         SignalWitness witness;Stamp time;
     } lanes_[2];
     pw_thread_loop* loop_=nullptr;pw_context* context_=nullptr;pw_core* core_=nullptr;
+    pw_registry* registry_=nullptr;spa_hook registryListener_{},coreListener_{};
+    bool registryListening_=false,coreListening_=false;
+    std::array<std::string,2> targets_;
+    std::array<std::atomic<std::uint32_t>,2> targetIds_{PW_ID_ANY,PW_ID_ANY};
+    std::atomic<bool> enumerated_{false};int sync_=0;
     bool running_=false;
     static void state(void* data,pw_stream_state,pw_stream_state value,const char*) {
         if(value==PW_STREAM_STATE_ERROR)static_cast<Lane*>(data)->failed=true;
@@ -67,7 +74,7 @@ public:
     struct Report {std::uint64_t render=0,capture=0,matches=0,errors=0;Stamp input,output;};
     Pair(){pw_init(nullptr,nullptr);lanes_[0].output=true;}
     ~Pair(){close();pw_deinit();}
-    bool resources()const{return loop_ || context_ || core_ || lanes_[0].stream || lanes_[1].stream;}
+    bool resources()const{return loop_ || context_ || core_ || registry_ || lanes_[0].stream || lanes_[1].stream;}
     void close() noexcept {
         for(auto& lane:lanes_)lane.enabled.store(false,std::memory_order_seq_cst);
         if(loop_ && running_)pw_thread_loop_lock(loop_);
@@ -76,6 +83,9 @@ public:
         for(auto& lane:lanes_)while(lane.inProcess.load(std::memory_order_seq_cst))std::this_thread::yield();
         if(loop_ && running_)pw_thread_loop_lock(loop_);
         for(auto& lane:lanes_)if(lane.stream){if(lane.listening)spa_hook_remove(&lane.listener);lane.listening=false;pw_stream_destroy(lane.stream);lane.stream=nullptr;}
+        if(registryListening_){spa_hook_remove(&registryListener_);registryListening_=false;}
+        if(coreListening_){spa_hook_remove(&coreListener_);coreListening_=false;}
+        if(registry_){pw_proxy_destroy(reinterpret_cast<pw_proxy*>(registry_));registry_=nullptr;}
         if(core_){pw_core_disconnect(core_);core_=nullptr;}
         if(context_){pw_context_destroy(context_);context_=nullptr;}
         if(loop_ && running_)pw_thread_loop_unlock(loop_);
@@ -85,9 +95,28 @@ public:
         if(resources())return std::unexpected{ErrorType::InvalidState};
         if(output.empty() || capture.empty())return std::unexpected{ErrorType::EndpointUnavailable};
         struct Cleanup {Pair& pair;~Cleanup(){pair.close();}} cleanup{*this};
+        targets_={output,capture};for(auto& id:targetIds_)id=PW_ID_ANY;enumerated_=false;
         loop_=pw_thread_loop_new("mka-duplex-study",nullptr);if(!loop_)return std::unexpected{ErrorType::ConfigurationFailed};
         context_=pw_context_new(pw_thread_loop_get_loop(loop_),nullptr,0);if(!context_)return std::unexpected{ErrorType::ConfigurationFailed};
         core_=pw_context_connect(context_,nullptr,0);if(!core_)return std::unexpected{ErrorType::EndpointUnavailable};
+        registry_=pw_core_get_registry(core_,PW_VERSION_REGISTRY,0);if(!registry_)return std::unexpected{ErrorType::EndpointUnavailable};
+        static const pw_registry_events registryEvents=[] {
+            pw_registry_events e{};e.version=PW_VERSION_REGISTRY_EVENTS;
+            e.global=+[](void* data,std::uint32_t id,std::uint32_t,const char* type,std::uint32_t,const spa_dict* props){
+                if(std::strcmp(type,PW_TYPE_INTERFACE_Node)!=0 || !props)return;
+                const char* name=spa_dict_lookup(props,PW_KEY_NODE_NAME);const char* media=spa_dict_lookup(props,PW_KEY_MEDIA_CLASS);
+                if(!name || !media || std::strcmp(media,"Audio/Sink")!=0)return;
+                auto& pair=*static_cast<Pair*>(data);for(unsigned i=0;i<2;++i)if(pair.targets_[i]==name)pair.targetIds_[i]=id;
+            };
+            return e;
+        }();
+        static const pw_core_events coreEvents=[] {
+            pw_core_events e{};e.version=PW_VERSION_CORE_EVENTS;
+            e.done=+[](void* data,std::uint32_t,int sequence){auto& pair=*static_cast<Pair*>(data);if(sequence==pair.sync_)pair.enumerated_=true;};return e;
+        }();
+        pw_registry_add_listener(registry_,&registryListener_,&registryEvents,this);registryListening_=true;
+        pw_core_add_listener(core_,&coreListener_,&coreEvents,this);coreListening_=true;
+        sync_=pw_core_sync(core_,PW_ID_CORE,0);if(sync_<0)return std::unexpected{ErrorType::EndpointUnavailable};
         static const pw_stream_events events=[] {pw_stream_events e{};e.version=PW_VERSION_STREAM_EVENTS;e.state_changed=state;e.param_changed=format;e.process=process;return e;}();
         for(unsigned i=0;i<2;++i){auto& lane=lanes_[i];
             lane.failed=false;lane.format=false;lane.frames=0;lane.calls=0;lane.matched=0;lane.witness={};lane.time={};
@@ -98,13 +127,24 @@ public:
             if(i)pw_properties_set(props,"stream.capture.sink","true");
             lane.stream=pw_stream_new(core_,i?"study-capture":"study-render",props);if(!lane.stream)return std::unexpected{ErrorType::ConfigurationFailed};
             pw_stream_add_listener(lane.stream,&lane.listener,&events,&lane);lane.listening=true;
+        }
+        if(pw_thread_loop_start(loop_)<0)return std::unexpected{ErrorType::ConfigurationFailed};running_=true;
+        const auto registryDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(!enumerated_ && std::chrono::steady_clock::now()<registryDeadline)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if(!enumerated_)return std::unexpected{ErrorType::EndpointUnavailable};
+        for(unsigned i=0;i<2;++i){auto& lane=lanes_[i];
+            // Some older session managers ignore dont-fallback for unknown names.
+            // Resolve the requested object before connecting either native leg.
+            if(targetIds_[i]==PW_ID_ANY)return std::unexpected{ErrorType::EndpointUnavailable};
             std::uint8_t storage[1024];spa_pod_builder builder=SPA_POD_BUILDER_INIT(storage,sizeof(storage));
             spa_audio_info_raw raw{};raw.format=SPA_AUDIO_FORMAT_F32P;raw.rate=48000;raw.channels=2;
             const spa_pod* params[]{spa_format_audio_raw_build(&builder,SPA_PARAM_EnumFormat,&raw)};
             const auto flags=static_cast<pw_stream_flags>(PW_STREAM_FLAG_AUTOCONNECT|PW_STREAM_FLAG_MAP_BUFFERS|PW_STREAM_FLAG_RT_PROCESS);
-            if(pw_stream_connect(lane.stream,i?PW_DIRECTION_INPUT:PW_DIRECTION_OUTPUT,PW_ID_ANY,flags,params,1)<0)return std::unexpected{ErrorType::EndpointUnavailable};
+            pw_thread_loop_lock(loop_);
+            const auto connected=pw_stream_connect(lane.stream,i?PW_DIRECTION_INPUT:PW_DIRECTION_OUTPUT,targetIds_[i].load(),flags,params,1);
+            pw_thread_loop_unlock(loop_);
+            if(connected<0)return std::unexpected{ErrorType::EndpointUnavailable};
         }
-        if(pw_thread_loop_start(loop_)<0)return std::unexpected{ErrorType::ConfigurationFailed};running_=true;
         auto wait=[&](auto done){const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(3);
             while(!done() && !lanes_[0].failed && !lanes_[1].failed && std::chrono::steady_clock::now()<end)std::this_thread::sleep_for(std::chrono::milliseconds(1));
             return done() && !lanes_[0].failed && !lanes_[1].failed;};

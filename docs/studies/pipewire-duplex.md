@@ -19,6 +19,13 @@ disables processing, waits for entered callbacks, destroys streams under the loo
 lock and joins the loop before releasing the owning state. Normal and ASan/UBSan
 jobs use isolated servers and publish the native observation in JUnit.
 
+The Ubuntu CI exposed an older session manager falling back to the default sink
+for an unknown target despite `node.dont-fallback`. The proof now resolves both
+requested names from a completed native registry roundtrip and connects by native
+node ID. The second-ID check runs after the first leg connects, so the missing-leg
+test also exercises rollback. Full post-link identity and device-removal/epoch
+handling remain production adoption criteria, beyond this bounded prototype.
+
 ## Clock result and adoption criteria
 
 `pw_stream_get_time_n` provides graph ticks, their rate and the monotonic time of
