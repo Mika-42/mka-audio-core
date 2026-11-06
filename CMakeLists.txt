@@ -34,6 +34,11 @@ option(MKA_BUILD_PULSEAUDIO
         ${LINUX}
 )
 
+option(MKA_BUILD_WASAPI "Build the Windows WASAPI backend" ${WIN32})
+if(MKA_BUILD_WASAPI AND NOT WIN32)
+    message(FATAL_ERROR "MKA_BUILD_WASAPI requires a Windows target and Windows SDK")
+endif()
+
 
 # ============================================================
 # Global C++ configuration
@@ -468,10 +473,25 @@ if (MKA_BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND MKA_ALLOCATOR_TES
     gtest_discover_tests(mka-audio-alloc-probe-tests TEST_PREFIX "probe." PROPERTIES TIMEOUT 10)
 endif()
 
-if(MKA_BUILD_TESTS)
-    set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ClassifyTests.cmake")
-endif()
 
 if(MKA_ENABLE_COVERAGE)
     include(cmake/Coverage.cmake)
+endif()
+
+if(MKA_BUILD_WASAPI)
+    add_library(mka-audio-wasapi)
+    target_sources(mka-audio-wasapi PUBLIC FILE_SET CXX_MODULES BASE_DIRS src FILES
+        src/backend/windows/wasapi.cppm src/backend/windows/wasapi_compat.cppm)
+    target_link_libraries(mka-audio-wasapi PRIVATE mka-core-audio ole32 uuid)
+    target_compile_features(mka-audio-wasapi PUBLIC cxx_std_${MKA_CXX_STANDARD})
+    target_compile_definitions(mka-audio-wasapi PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    if(MKA_BUILD_TESTS)
+        add_executable(mka-audio-wasapi-tests test/windows/test_wasapi.cpp test/windows/test_compat.cpp)
+        target_link_libraries(mka-audio-wasapi-tests PRIVATE mka-audio-wasapi GTest::gtest_main)
+        gtest_discover_tests(mka-audio-wasapi-tests TEST_PREFIX "wasapi.")
+    endif()
+endif()
+
+if(MKA_BUILD_TESTS)
+    set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ClassifyTests.cmake")
 endif()
