@@ -30,6 +30,13 @@ target_link_libraries(mka-study-timeline-tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(mka-study-timeline-tests TEST_PREFIX "study.timeline."
     PROPERTIES LABELS "unit\\;study\\;nonrt" TIMEOUT 30)
 
+if(MKA_BUILD_PULSEAUDIO)
+    add_executable(mka-study-pulse-tests duplex/test_pulse.cpp)
+    target_link_libraries(mka-study-pulse-tests PRIVATE mka-core-audio GTest::gtest_main PkgConfig::PULSEAUDIO)
+    gtest_discover_tests(mka-study-pulse-tests TEST_PREFIX "study.pulse."
+        PROPERTIES LABELS "integration\\;study\\;virtual" TIMEOUT 30)
+endif()
+
 if(WIN32)
     add_executable(mka-study-legacy-tests windows/test_legacy.cpp)
     target_link_libraries(mka-study-legacy-tests PRIVATE mka-core-audio GTest::gtest_main winmm dsound dxguid)
