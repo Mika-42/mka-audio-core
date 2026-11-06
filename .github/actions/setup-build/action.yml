@@ -15,9 +15,13 @@ runs:
       run: |
         # The Azure HTTP mirror stalled repeatedly during previous matrix runs.
         # Keep Ubuntu's signed repository metadata and use the official HTTPS mirror.
-        if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
-        fi
+        # New hosted images reference mirror+file:/etc/apt/apt-mirrors.txt.
+        # Rewrite the mirror list as well as direct legacy/deb822 sources.
+        for apt_source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources /etc/apt/apt-mirrors.txt; do
+          if [ -f "$apt_source" ]; then
+            sudo sed -i -E 's|https?://azure\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$apt_source"
+          fi
+        done
         sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
         sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends clang-19 clang-tools-19 libclang-rt-19-dev llvm-19 g++-14
         python -m pip install 'cmake>=4.0,<5' ninja
