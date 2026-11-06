@@ -16,7 +16,7 @@ if(MKA_STUDY_ASIO)
     target_include_directories(mka-study-asio-tests PRIVATE "${MKA_ASIO_SDK_DIR}/common")
     target_link_libraries(mka-study-asio-tests PRIVATE mka-core-audio GTest::gtest_main)
     gtest_discover_tests(mka-study-asio-tests TEST_PREFIX "study.asio."
-        PROPERTIES LABELS "unit;study;nonrt" TIMEOUT 30)
+        PROPERTIES LABELS "unit\\;study\\;nonrt" TIMEOUT 30)
 endif()
 
 if(WIN32)
