@@ -1388,6 +1388,25 @@ no executable regions are listed separately, without a fabricated percentage.
 Each run uses fresh raw profiles; failed tests fail the target even when a report
 can still be generated. Coverage and sanitizers use separate builds.
 
+On Windows, use Visual Studio 2022 17.14+ with the C++ toolset and Windows SDK,
+CMake 4+ and Ninja. In an x64 Developer Command Prompt:
+
+```bat
+cmake --preset windows-core
+cmake --build --preset windows-core --parallel 2
+ctest --preset windows-core
+```
+
+This SDK-independent configuration uses MSVC `/std:c++latest`, the existing
+C++ module file set and the same dynamic CRT for the library and GoogleTest.
+The Windows CI job runs the same positive and negative core contract tests;
+Linux-only allocator interposition is not part of this Windows preset.
+
+CMake currently recognizes MSVC's `/std:c++latest` under `cxx_std_23`, not
+`cxx_std_26`; the Windows build uses that CMake feature while compiling in
+`/std:c++latest` draft mode. Other compilers continue to require `cxx_std_26`.
+This does not claim that MSVC implements every future C++26 language feature.
+
 For direct ALSA sine/record-and-replay tests, use the separate audio test executable
 and explicit input/output PCMs. See [manual ALSA diagnosis](docs/manual-alsa.md)
 for commands, signal levels, bounded waits and hardware mixer/ownership checks.

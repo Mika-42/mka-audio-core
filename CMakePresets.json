@@ -48,6 +48,19 @@
       "cacheVariables": {
         "MKA_ENABLE_COVERAGE": "ON"
       }
+    },
+    {
+      "name": "windows-core",
+      "inherits": "core",
+      "displayName": "Windows MSVC C++26 core",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "cl"
+      }
     }
   ],
   "buildPresets": [
@@ -69,6 +82,10 @@
       "targets": [
         "coverage"
       ]
+    },
+    {
+      "name": "windows-core",
+      "configurePreset": "windows-core"
     }
   ],
   "testPresets": [
@@ -128,6 +145,22 @@
       },
       "environment": {
         "TSAN_OPTIONS": "halt_on_error=1"
+      }
+    },
+    {
+      "name": "windows-core",
+      "configurePreset": "windows-core",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "^unit$"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "jobs": 2
       }
     }
   ]
