@@ -1,0 +1,36 @@
+name: Optional backend studies
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: optional-studies-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows-sdk:
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [none, address]
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - run: python -m pip install 'cmake>=4.0,<5' ninja
+      - run: python ci/fetch_asio_study_sdk.py --destination build/asio-sdk
+      - shell: bash
+        run: cmake --preset windows-core -B build/studies -DMKA_SANITIZER=${{ matrix.sanitizer }} -DMKA_BUILD_STUDIES=ON -DMKA_STUDY_ASIO=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
+      - run: cmake --build build/studies --parallel 2
+      - run: ctest --test-dir build/studies -L study --no-tests=error --output-on-failure --output-junit "${{ github.workspace }}/junit-studies-windows.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: studies-windows-${{ matrix.sanitizer }}
+          path: junit-studies-windows.xml
