@@ -13,6 +13,35 @@ env:
   CXX: clang++-19
   CXXFLAGS: --gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/14
 jobs:
+  gcc16-core:
+    runs-on: ubuntu-24.04
+    # Reproduce GCC/libstdc++ 16 module/header declaration merging.
+    container: gcc:16@sha256:302a3abf0811355429805247a2ef01ac830866750d550ac0c923255c05a25004
+    timeout-minutes: 15
+    env:
+      CXX: g++
+      CXXFLAGS: ''
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CMake and Ninja
+        run: |
+          apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends python3-venv
+          python3 -m venv /tmp/mka-gcc16-tools
+          /tmp/mka-gcc16-tools/bin/python -m pip install 'cmake>=4.0,<5' ninja
+          echo /tmp/mka-gcc16-tools/bin >> "$GITHUB_PATH"
+      - run: g++ --version
+      - run: cmake --preset core
+      - run: cmake --build --preset core --parallel 2
+      - run: ctest --preset core --output-junit "${{ github.workspace }}/junit-gcc16.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gcc16-core-test-results
+          path: |
+            junit-gcc16.xml
+            build/core/Testing/Temporary/LastTest.log
+
   core:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
