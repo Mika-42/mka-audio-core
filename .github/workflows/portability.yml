@@ -70,8 +70,11 @@ jobs:
       - run: cmake --preset asan -B build/fuzz -DMKA_BUILD_TESTS=OFF -DMKA_BUILD_FUZZERS=ON
       - run: cmake --build build/fuzz --parallel 2
       - run: python3 ci/run_config_fuzz.py --binary build/fuzz/mka-audio-config-fuzz --work build/fuzz/corpus --runs 100000
+      - run: python3 ci/run_format_fuzz.py --binary build/fuzz/mka-audio-format-fuzz --work build/fuzz/format-corpus --runs 100000
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: configuration-fuzz-reproducer
-          path: build/fuzz/corpus/
+          path: |
+            build/fuzz/corpus/
+            build/fuzz/format-corpus/
