@@ -33,7 +33,7 @@ jobs:
       - run: g++ --version
       - run: cmake --preset core
       - run: cmake --build --preset core --parallel 2
-      - run: ctest --preset core --output-junit "${{ github.workspace }}/junit-gcc16.xml"
+      - run: ctest --preset core --output-junit "$PWD/junit-gcc16.xml"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
