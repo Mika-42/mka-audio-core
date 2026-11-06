@@ -24,9 +24,9 @@ if(WIN32)
     target_link_libraries(mka-study-legacy-tests PRIVATE mka-core-audio GTest::gtest_main winmm dsound dxguid)
     target_compile_definitions(mka-study-legacy-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     gtest_discover_tests(mka-study-legacy-tests TEST_PREFIX "study.legacy."
-        PROPERTIES LABELS "unit;study;nonrt" TIMEOUT 30
+        PROPERTIES LABELS "unit\\;study\\;nonrt" TIMEOUT 30
         TEST_FILTER "-LegacyHardware.*")
     gtest_discover_tests(mka-study-legacy-tests TEST_PREFIX "study.legacy.hardware."
-        PROPERTIES LABELS "integration;study;hardware" TIMEOUT 30
+        PROPERTIES LABELS "integration\\;study\\;hardware" TIMEOUT 30
         TEST_FILTER "LegacyHardware.*" TEST_LIST mka_legacy_hardware)
 endif()
