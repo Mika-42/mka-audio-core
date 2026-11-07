@@ -52,8 +52,8 @@ protected:
             config.direction == Direction::Input ? eCapture : eRender,
             channels, config.sampleRate, config.bufferSize, kind}));
     }
-    Result start_() override { return std::unexpected{ErrorType::ConfigurationFailed}; }
-    Result stop_() override { return std::unexpected{ErrorType::ConfigurationFailed}; }
+    Result start_() override { return nativeResult(session_.start(callbacks())); }
+    Result stop_() override { return nativeResult(session_.stop()); }
     Result close_() override { return nativeResult(session_.close()); }
 private:
     struct Conversion {
@@ -73,7 +73,8 @@ private:
             } : nullptr,
             &mka_wasapi_detail::readSamples<Conversion>, &mka_wasapi_detail::writeSamples<Conversion>,
             +[](void* user) noexcept {static_cast<Wasapi*>(user)->notifyXRun();},
-            +[](void* user) noexcept {static_cast<Wasapi*>(user)->notifyFailed();}};
+            +[](void* user) noexcept {static_cast<Wasapi*>(user)->notifyFailed();},
+            +[](void* user,bool granted) noexcept {static_cast<Wasapi*>(user)->notifyRealtime(granted);}};
     }
     static Result nativeResult(HRESULT result) noexcept {
         if (SUCCEEDED(result)) return {};

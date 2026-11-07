@@ -19,6 +19,8 @@ public:
     Microsoft::WRL::ComPtr<FakeCapture> capture=makeFake<FakeCapture>();
     HANDLE audioEvent=nullptr;unsigned eventCalls=0, renderServiceCalls=0;
     Microsoft::WRL::ComPtr<FakeRender> render=makeFake<FakeRender>();
+    std::atomic<HRESULT> startResult{S_OK},stopResult{S_OK},resetResult{S_OK};
+    unsigned starts=0,stops=0,resets=0;
     UINT32 bufferFrames=480;
     std::atomic<UINT32> padding{0};std::atomic<HRESULT> paddingResult{S_OK};
     AUDCLNT_SHAREMODE initializedMode=AUDCLNT_SHAREMODE_EXCLUSIVE;
@@ -51,9 +53,9 @@ public:
         std::memcpy(*out,&mix,sizeof(mix));return mixResult;
     }
     HRESULT STDMETHODCALLTYPE GetDevicePeriod(REFERENCE_TIME* normal, REFERENCE_TIME* min) override { *normal=period;*min=minimum;return periodResult; }
-    HRESULT STDMETHODCALLTYPE Start() override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE Stop() override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE Reset() override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE Start() override { ++starts;return startResult.load(); }
+    HRESULT STDMETHODCALLTYPE Stop() override { ++stops;return stopResult.load(); }
+    HRESULT STDMETHODCALLTYPE Reset() override { ++resets;padding=0;return resetResult.load(); }
     HRESULT STDMETHODCALLTYPE SetEventHandle(HANDLE event) override { ++eventCalls;audioEvent=event;return eventResult; }
     HRESULT STDMETHODCALLTYPE GetService(REFIID iid, void** out) override {
         *out=nullptr;

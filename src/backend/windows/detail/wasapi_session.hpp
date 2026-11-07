@@ -17,6 +17,7 @@ struct Callbacks {
     void (*write)(SampleKind,BYTE*,std::size_t,const float*,std::uint32_t) noexcept = nullptr;
     void (*xrun)(void*) noexcept = nullptr;
     void (*failed)(void*) noexcept = nullptr;
+    void (*realtime)(void*,bool) noexcept = nullptr;
 };
 class Session {
 public:
@@ -129,9 +130,71 @@ public:
             return S_OK;
         });
     }
+    HRESULT start(Callbacks callbacks) {
+        if (FAILED(control_.initialization())) return control_.initialization();
+        return control_.invoke([&,callbacks]() -> HRESULT {
+            if(!client_ || started_ || worker_.joinable()) return HRESULT_FROM_WIN32(ERROR_INVALID_STATE);
+            if(callbacks.process && ((request_.flow==eRender && !callbacks.write)
+                || (request_.flow==eCapture && !callbacks.read))) return E_INVALIDARG;
+            UniqueEvent stop(events_.create(nullptr,TRUE,FALSE,nullptr),events_.close);
+            if(!stop.get()) return lastEventError();
+            UniqueEvent run(events_.create(nullptr,TRUE,FALSE,nullptr),events_.close);
+            if(!run.get()) return lastEventError();
+            if(!events_.reset(audioEvent_.get())) return lastEventError();
+            std::promise<HRESULT> ready;auto prepared=ready.get_future();
+            std::jthread pending;
+            struct Rollback {
+                Session& self;std::jthread& worker;bool committed=false;
+                ~Rollback() {
+                    if(committed) return;
+                    self.enabled_.store(false);worker.request_stop();self.events_.signal(self.stopEvent_.get());
+                    if(worker.joinable())worker.join();
+                    if(self.started_){(void)self.client_->Stop();self.started_=false;}
+                    (void)self.client_->Reset();
+                    self.stopEvent_.reset();self.runEvent_.reset();self.callbacks_={};
+                }
+            } rollback{*this,pending};
+            stopEvent_=std::move(stop);runEvent_=std::move(run);callbacks_=callbacks;
+            enabled_.store(false);failed_.store(false);lastFailure_.store(S_OK);
+            pending=std::jthread([this,&ready](std::stop_token stop) {
+                const auto initialized=control_.api().initialize(nullptr,COINIT_MULTITHREADED);
+                if(FAILED(initialized)){ready.set_value(initialized);return;}
+                struct Balance {const ComApi& api;~Balance(){api.uninitialize();}} balance{control_.api()};
+                HRESULT preparation=S_OK;
+                if(request_.flow==eRender){auto silence=callbacks_;silence.process=nullptr;preparation=renderOnce(silence);}
+                ready.set_value(FAILED(preparation)?preparation:S_OK);
+                if(FAILED(preparation))return;
+                const HANDLE gate[]{stopEvent_.get(),runEvent_.get()};
+                for(;;){
+                    if(stop.stop_requested())return;
+                    const auto result=events_.wait(2,gate,FALSE,100);
+                    if(result==WAIT_OBJECT_0)return;
+                    if(result==WAIT_OBJECT_0+1)break;
+                    if(result!=WAIT_TIMEOUT){fail(lastEventError());return;}
+                }
+                DWORD task=0;const auto priority=events_.enterAudio(L"Pro Audio",&task);
+                struct Revert {const EventApi& api;HANDLE priority;~Revert(){if(priority)api.leaveAudio(priority);}} revert{events_,priority};
+                if(callbacks_.realtime)callbacks_.realtime(callbacks_.user,priority!=nullptr);
+                processLoop(stop);
+            });
+            const auto preparation=prepared.get();
+            if(FAILED(preparation))return preparation;
+            const auto result=client_->Start();
+            if(FAILED(result))return result;
+            started_=true;enabled_.store(true,std::memory_order_release);
+            if(!events_.signal(runEvent_.get()))return lastEventError();
+            worker_=std::move(pending);rollback.committed=true;
+            return S_OK;
+        });
+    }
+    HRESULT stop() {
+        if(FAILED(control_.initialization()))return control_.initialization();
+        return control_.invoke([&]{return stopOnControl(false);});
+    }
     HRESULT close() {
         if (FAILED(control_.initialization())) return control_.initialization();
         return control_.invoke([&]() -> HRESULT {
+            (void)stopOnControl(true);
             capture_.Reset(); render_.Reset(); client_.Reset(); device_.Reset(); audioEvent_.reset();
             std::vector<float>().swap(samples_);
             std::vector<float*>().swap(outputs_);std::vector<const float*>().swap(inputs_);
@@ -153,15 +216,16 @@ public:
         const auto stride=format_.Format.nBlockAlign;
         std::memset(bytes,0,static_cast<std::size_t>(frames)*stride);
         if(callbacks.process) {
-            for(auto* channel:outputs_) std::fill_n(channel,frames,0.0f);
+            for(std::uint32_t channel=0;channel<request_.channels;++channel)
+                std::fill_n(outputs_.data()[channel],frames,0.0f);
             callbacks.process(callbacks.user,nullptr,0,outputs_.data(),request_.channels,frames);
             const auto width=format_.Format.wBitsPerSample/8;
             for(std::uint32_t channel=0;channel<request_.channels;++channel)
-                callbacks.write(request_.kind,bytes+static_cast<std::size_t>(channel)*width,stride,outputs_[channel],frames);
+                callbacks.write(request_.kind,bytes+static_cast<std::size_t>(channel)*width,stride,outputs_.data()[channel],frames);
         }
         return render_->ReleaseBuffer(frames,callbacks.process?0:AUDCLNT_BUFFERFLAGS_SILENT);
     }
-    HRESULT processCapture(const Callbacks& callbacks) noexcept {
+    HRESULT processCapture(const Callbacks& callbacks,UINT32* taken=nullptr) noexcept {
         if(callbacks.process && !callbacks.read) return E_INVALIDARG;
         struct Context {Session* session;const Callbacks* callbacks;} context{this,&callbacks};
         return captureOnce(+[](void* user,const BYTE* bytes,std::uint32_t frames,DWORD flags) noexcept {
@@ -177,11 +241,12 @@ public:
                     self.format_.Format.nBlockAlign,plane,frames);
             }
             callbacks.process(callbacks.user,self.inputs_.data(),self.request_.channels,nullptr,0,frames);
-        },&context);
+        },&context,taken);
     }
     using CapturePacket = void (*)(void*, const BYTE*, std::uint32_t, DWORD) noexcept;
     // Called only by the processing owner. No queue, allocation, wait or lock.
-    HRESULT captureOnce(CapturePacket process, void* user) noexcept {
+    HRESULT captureOnce(CapturePacket process, void* user,UINT32* taken=nullptr) noexcept {
+        if(taken)*taken=0;
         if (!capture_) return E_UNEXPECTED;
         UINT32 pending = 0;
         HRESULT result = capture_->GetNextPacketSize(&pending);
@@ -198,14 +263,63 @@ public:
         if (frames > capacity_ || (flags & ~known)) status = E_UNEXPECTED;
         else if (!frames) status = S_FALSE;
         else if (!bytes && !(flags & AUDCLNT_BUFFERFLAGS_SILENT)) status = E_POINTER;
-        else if (process) process(user,bytes,frames,flags);
+        else {if(taken)*taken=frames;if(process)process(user,bytes,frames,flags);}
         const auto released = capture_->ReleaseBuffer(frames);
         return FAILED(released) ? released : status;
     }
+    bool hasWorker() const noexcept {return worker_.joinable();}
+    bool failed() const noexcept {return failed_.load(std::memory_order_acquire);}
+    HRESULT lastFailure() const noexcept {return lastFailure_.load(std::memory_order_acquire);}
     HANDLE audioEvent() const noexcept { return audioEvent_.get(); }
     std::uint32_t capacity() const noexcept { return capacity_; }
     const WAVEFORMATEXTENSIBLE& nativeFormat() const noexcept { return format_; }
 private:
+    void fail(HRESULT result) noexcept {
+        enabled_.store(false,std::memory_order_release);lastFailure_.store(result,std::memory_order_release);
+        if(!failed_.exchange(true,std::memory_order_acq_rel) && callbacks_.failed)callbacks_.failed(callbacks_.user);
+    }
+    void processLoop(std::stop_token stop) noexcept {
+        const HANDLE handles[]{stopEvent_.get(),audioEvent_.get()};
+        while(!stop.stop_requested()) {
+            const auto event=events_.wait(2,handles,FALSE,100);
+            if(event==WAIT_OBJECT_0)break;
+            if(event==WAIT_TIMEOUT)continue;
+            if(event!=WAIT_OBJECT_0+1){fail(lastEventError());break;}
+            if(!enabled_.load(std::memory_order_acquire))continue;
+            HRESULT result=S_OK;
+            if(request_.flow==eRender)result=renderOnce(callbacks_);
+            else {
+                UINT32 budget=capacity_;
+                while(budget && enabled_.load(std::memory_order_acquire) && !stop.stop_requested()) {
+                    UINT32 taken=0;result=processCapture(callbacks_,&taken);
+                    if(result!=S_OK || !taken || taken>=budget)break;
+                    budget-=taken;
+                }
+            }
+            if(FAILED(result)){fail(result);break;}
+        }
+    }
+    HRESULT stopOnControl(bool force) {
+        enabled_.store(false,std::memory_order_release);
+        if(worker_.joinable()) {
+            worker_.request_stop();if(stopEvent_.get())events_.signal(stopEvent_.get());worker_.join();
+        }
+        stopEvent_.reset();runEvent_.reset();
+        HRESULT result=S_OK;
+        if(client_ && started_) {
+            result=client_->Stop();
+            if(result==AUDCLNT_E_DEVICE_INVALIDATED || result==AUDCLNT_E_SERVICE_NOT_RUNNING)result=S_OK;
+            if(SUCCEEDED(result) || force) {
+                started_=false;
+                const auto reset=client_->Reset();
+                if(SUCCEEDED(result) && FAILED(reset) && reset!=AUDCLNT_E_DEVICE_INVALIDATED
+                    && reset!=AUDCLNT_E_SERVICE_NOT_RUNNING)result=reset;
+            }
+        }
+        if(FAILED(result) && !force)fail(result);
+        callbacks_={};
+        return force?S_OK:result;
+    }
     ControlThread& control_;
     EventApi events_;
     UniqueEvent audioEvent_;
@@ -219,5 +333,11 @@ private:
     std::vector<float> samples_;
     std::vector<float*> outputs_;
     std::vector<const float*> inputs_;
+    UniqueEvent stopEvent_,runEvent_;
+    Callbacks callbacks_;
+    bool started_=false;
+    std::atomic<bool> enabled_{false},failed_{false};
+    std::atomic<HRESULT> lastFailure_{S_OK};
+    std::jthread worker_;
 };
 }
