@@ -278,12 +278,29 @@ private:
         enabled_.store(false,std::memory_order_release);lastFailure_.store(result,std::memory_order_release);
         if(!failed_.exchange(true,std::memory_order_acq_rel) && callbacks_.failed)callbacks_.failed(callbacks_.user);
     }
+    bool audioError(HRESULT result) noexcept {
+        // A temporary missing SDK buffer is an xrun; do not retry in a tight loop.
+        if(result==AUDCLNT_E_BUFFER_ERROR) {
+            if(callbacks_.xrun)callbacks_.xrun(callbacks_.user);
+            return true;
+        }
+        // Device/service/resource invalidation, protocol errors and other terminal
+        // HRESULTs disable processing before publishing failure exactly once.
+        fail(result);return false;
+    }
     void processLoop(std::stop_token stop) noexcept {
         const HANDLE handles[]{stopEvent_.get(),audioEvent_.get()};
         while(!stop.stop_requested()) {
             const auto event=events_.wait(2,handles,FALSE,100);
             if(event==WAIT_OBJECT_0)break;
-            if(event==WAIT_TIMEOUT)continue;
+            if(event==WAIT_TIMEOUT) {
+                if(!enabled_.load(std::memory_order_acquire))continue;
+                UINT32 count=0;
+                const auto health=request_.flow==eRender?client_->GetCurrentPadding(&count):capture_->GetNextPacketSize(&count);
+                if(FAILED(health)){if(!audioError(health))break;}
+                else if(count>capacity_){fail(E_UNEXPECTED);break;}
+                continue;
+            }
             if(event!=WAIT_OBJECT_0+1){fail(lastEventError());break;}
             if(!enabled_.load(std::memory_order_acquire))continue;
             HRESULT result=S_OK;
@@ -296,7 +313,7 @@ private:
                     budget-=taken;
                 }
             }
-            if(FAILED(result)){fail(result);break;}
+            if(FAILED(result) && !audioError(result))break;
         }
     }
     HRESULT stopOnControl(bool force) {
@@ -308,12 +325,13 @@ private:
         HRESULT result=S_OK;
         if(client_ && started_) {
             result=client_->Stop();
-            if(result==AUDCLNT_E_DEVICE_INVALIDATED || result==AUDCLNT_E_SERVICE_NOT_RUNNING)result=S_OK;
+            if(result==AUDCLNT_E_DEVICE_INVALIDATED || result==AUDCLNT_E_RESOURCES_INVALIDATED
+                || result==AUDCLNT_E_SERVICE_NOT_RUNNING)result=S_OK;
             if(SUCCEEDED(result) || force) {
                 started_=false;
                 const auto reset=client_->Reset();
                 if(SUCCEEDED(result) && FAILED(reset) && reset!=AUDCLNT_E_DEVICE_INVALIDATED
-                    && reset!=AUDCLNT_E_SERVICE_NOT_RUNNING)result=reset;
+                    && reset!=AUDCLNT_E_RESOURCES_INVALIDATED && reset!=AUDCLNT_E_SERVICE_NOT_RUNNING)result=reset;
             }
         }
         if(FAILED(result) && !force)fail(result);
