@@ -40,3 +40,21 @@ TEST(DspBuffers, MissingInputAndOutputDirectionsRespectNullTablesAndProduceSilen
     dsp.process(AudioProcessContext{{inputs,1},{nullptr,0},8});
     EXPECT_EQ(dsp.calls.load(),3u);EXPECT_EQ(dsp.frames.load(),16u);
 }
+#include "callback_transport.hpp"
+TEST(DspBoundary, CorePreservesActualCallbackSizesAndDoesNotAccumulateDspBlocks) {
+    struct Node {
+        mka_example::Gain gain;
+        std::array<std::uint32_t,6> sizes{};std::size_t calls=0;
+        void process(const AudioProcessContext& context) noexcept {
+            if(calls<sizes.size())sizes[calls++]=context.frames;
+            gain.process(context);
+        }
+    } node;
+    dsp_test::Transport transport;
+    ASSERT_TRUE(transport.setProcessFunction(+[](void* user,const AudioProcessContext& context) noexcept {static_cast<Node*>(user)->process(context);},&node));
+    ASSERT_TRUE(transport.open({"A",Direction::Duplex,1,2,48000,Format::Float32,64}));ASSERT_TRUE(transport.start());
+    const std::array<std::uint32_t,6> sizes{1,17,63,3,64,2};
+    for(std::size_t i=0;i<sizes.size();++i){transport.emit(sizes[i]);EXPECT_EQ(node.calls,i+1);}
+    ASSERT_TRUE(transport.stop());ASSERT_TRUE(transport.close());
+    EXPECT_EQ(node.sizes,sizes);EXPECT_EQ(node.gain.frames.load(),150u);
+}
