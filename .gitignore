@@ -4,3 +4,6 @@ cmake-build-default/
 .idea/
 
 /build/
+
+# Raw microphone capture from the manual WASAPI test
+mka-wasapi-capture.wav
