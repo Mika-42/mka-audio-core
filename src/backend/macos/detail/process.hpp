@@ -61,13 +61,28 @@ struct ProcessState {
                 for(UInt32 i=0;i<count;++i)input[channel][i]=data[i*buffer.mNumberChannels+ch];
         }
     }
+    void writeOutput(AudioBufferList* list,UInt32 count) noexcept {
+        UInt32 channel=0;
+        for(UInt32 b=0;b<list->mNumberBuffers;++b){
+            auto& buffer=list->mBuffers[b];
+            auto* data=static_cast<float*>(buffer.mData);
+            for(UInt32 ch=0;ch<buffer.mNumberChannels;++ch,++channel)
+                for(UInt32 i=0;i<count;++i)data[i*buffer.mNumberChannels+ch]=output[channel][i];
+        }
+    }
     void process(const AudioBufferList* in,AudioBufferList* out) noexcept {
         silence(out);
-        UInt32 count=0;
-        if(inputs && !frames(in,inputs,count)){fail();return;}
+        UInt32 inputFrames=0,outputFrames=0;
+        if(inputs && !frames(in,inputs,inputFrames)){fail();return;}
+        if(outputs && !frames(out,outputs,outputFrames)){fail();return;}
+        if(inputs && outputs && inputFrames!=outputFrames){fail();return;}
+        const auto count=inputs?inputFrames:outputFrames;
+        if(!count)return;
         if(inputs)readInput(in,count);
-        if(callbacks.process && !outputs && count)
-            callbacks.process(callbacks.user,inputPointers.data(),inputs,nullptr,0,count);
+        for(auto& channel:output)std::fill_n(channel.data(),count,0.0f);
+        if(callbacks.process)callbacks.process(callbacks.user,inputs?inputPointers.data():nullptr,inputs,
+            outputs?outputPointers.data():nullptr,outputs,count);
+        if(outputs && !failed.load(std::memory_order_acquire))writeOutput(out,count);
     }
 };
 inline OSStatus ioProc(AudioObjectID,const AudioTimeStamp*,const AudioBufferList* input,
