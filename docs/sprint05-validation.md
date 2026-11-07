@@ -40,3 +40,9 @@ counters provide their respective evidence without claiming those tools on Windo
 The GitHub `Windows C++26 checks` workflow uploads JUnit, CTest logs and ASan
 witness output. Each PR carries its own check results; do not infer a physical
 hardware success from compilation or from a green job containing SKIP cases.
+
+Exclusive capability queries are a separate read-only hardware assessment, with
+supported/unsupported/error counts in JUnit and explicit unavailable-device skips.
+See [exclusive-mode assessment](wasapi-exclusive-assessment.md). They never
+initialize or start an exclusive stream and do not establish exclusive playback
+or capture readiness.
