@@ -3,6 +3,7 @@
 #include "fake_com.hpp"
 #include <atomic>
 #include <cstring>
+#include "fake_client.hpp"
 namespace wasapi_test {
 using namespace mka_wasapi_detail;
 inline std::atomic<int> liveObjects{0};
@@ -13,8 +14,11 @@ public:
     std::wstring id = L"test:output";
     EDataFlow flow = eRender;
     DWORD state = DEVICE_STATE_ACTIVE;
-    HRESULT idResult = S_OK, stateResult = S_OK, flowResult = S_OK;
-    HRESULT STDMETHODCALLTYPE Activate(REFIID, DWORD, PROPVARIANT*, void**) override { return E_NOTIMPL; }
+    HRESULT idResult = S_OK, stateResult = S_OK, flowResult = S_OK, activateResult = S_OK;
+    ComPtr<FakeAudioClient> client = makeFake<FakeAudioClient>();
+    HRESULT STDMETHODCALLTYPE Activate(REFIID iid, DWORD, PROPVARIANT*, void** out) override {
+        *out=nullptr;if (FAILED(activateResult)) return activateResult;return client->QueryInterface(iid,out);
+    }
     HRESULT STDMETHODCALLTYPE OpenPropertyStore(DWORD, IPropertyStore** out) override { *out = nullptr; return E_FAIL; }
     HRESULT STDMETHODCALLTYPE GetId(LPWSTR* out) override {
         *out = static_cast<wchar_t*>(CoTaskMemAlloc((id.size()+1)*sizeof(wchar_t)));
