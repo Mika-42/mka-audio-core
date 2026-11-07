@@ -33,7 +33,8 @@ outside the audio callback, which uses preallocated buffers.
 | Linux | JACK | Supported |
 | Linux | PipeWire | Supported |
 | Linux | PulseAudio | Supported |
-| Windows | WASAPI | Supported (shared mode) |
+| Windows | WASAPI (shared mode) | Supported |
+| Windows | WASAPI (exclusive mode) | Not yet supported |
 | Windows | ASIO | Planned |
 | Windows | DirectSound | Planned |
 | Windows | WMME | Planned |
