@@ -1,10 +1,10 @@
 #pragma once
 #include "../../src/backend/windows/detail/wasapi_format.hpp"
-#include <wrl/implements.h>
+#include "fake_com.hpp"
 #include <atomic>
 #include <cstring>
 namespace wasapi_test {
-class FakeAudioClient : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IAudioClient> {
+class FakeAudioClient : public FakeComObject<FakeAudioClient, IAudioClient> {
 public:
     WAVEFORMATEXTENSIBLE mix{};
     HRESULT mixResult=S_OK, periodResult=S_OK;
