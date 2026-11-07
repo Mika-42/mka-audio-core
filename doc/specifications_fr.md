@@ -501,7 +501,8 @@ présentes ne prouvent pas à elles seules qu’une ouverture simultanée est po
 | JACK | Un nom de client : ses ports de sortie alimentent l’entrée du framework et ses ports d’entrée reçoivent sa sortie. Les deux groupes doivent contenir assez de canaux. Un cycle serveur fournit un callback duplex. ID vide : ports client non connectés. |
 | PipeWire | Un nom de nœud source ou sink. Une demande Duplex valide retourne `ConfigurationFailed` avant création native. Input et Output sont supportés séparément. |
 | PulseAudio | Un nom de source ou sink. Une demande Duplex valide retourne `ConfigurationFailed` avant création native. ID vide : périphérique par défaut du sens demandé. |
-| Windows/macOS | Les fichiers de backend actuels sont des stubs de modules ; aucune implémentation duplex fonctionnelle n’est revendiquée. |
+| Windows | WASAPI partagé en entrée ou sortie ; les demandes duplex sont rejetées. |
+| macOS | CoreAudio HAL Float32 en entrée/sortie ou duplex sur un seul périphérique/horloge ; aucun périphérique agrégé implicite. |
 
 ALSA ne combine pas des périphériques capture/lecture distincts ; JACK regroupe les
 deux sens sous un même client. Deux instances unidirectionnelles ne constituent pas
