@@ -26,7 +26,7 @@ TEST(WasapiCapabilities, PeriodRoundingRejectsZeroNegativeAndOverflow) {
 TEST(WasapiCapabilities, RecognizesPackedAndPaddedInteger24AndRejectsUnknownSubformats) {
     auto client=makeFake<FakeAudioClient>();auto& f=client->mix;
     f.SubFormat=KSDATAFORMAT_SUBTYPE_PCM;f.Samples.wValidBitsPerSample=24;
-    EXPECT_EQ(sampleKind(f.Format),SampleKind::S24In32);
+    EXPECT_EQ(sampleKind(f.Format),SampleKind::S24Msb32);
     f.Format.wBitsPerSample=24;EXPECT_EQ(sampleKind(f.Format),SampleKind::S24Packed);
     f.SubFormat=GUID_NULL;EXPECT_FALSE(sampleKind(f.Format));
 }

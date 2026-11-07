@@ -12,7 +12,7 @@
 #include <optional>
 #include <bit>
 namespace mka_wasapi_detail {
-enum class SampleKind { S16, S24Packed, S24In32, S32, F32, F64 };
+enum class SampleKind { S16, S24Packed, S24Msb32, S32, F32, F64 };
 inline std::optional<SampleKind> sampleKind(const WAVEFORMATEX& format) noexcept {
     bool pcm = format.wFormatTag == WAVE_FORMAT_PCM;
     bool floating = format.wFormatTag == WAVE_FORMAT_IEEE_FLOAT;
@@ -24,7 +24,7 @@ inline std::optional<SampleKind> sampleKind(const WAVEFORMATEX& format) noexcept
         floating = ext.SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
         validBits = ext.Samples.wValidBitsPerSample;
     }
-    if (pcm && validBits == 24 && format.wBitsPerSample == 32) return SampleKind::S24In32;
+    if (pcm && validBits == 24 && format.wBitsPerSample == 32) return SampleKind::S24Msb32;
     if (validBits != format.wBitsPerSample) return {};
     if (pcm) {
         switch(format.wBitsPerSample) {
@@ -67,7 +67,7 @@ inline std::optional<WAVEFORMATEXTENSIBLE> makeWaveFormat(SampleKind kind, std::
     switch(kind) {
         case SampleKind::S16: bits=valid=16; break;
         case SampleKind::S24Packed: bits=valid=24; break;
-        case SampleKind::S24In32: bits=32; valid=24; break;
+        case SampleKind::S24Msb32: bits=32; valid=24; break;
         case SampleKind::S32: bits=valid=32; break;
         case SampleKind::F32: bits=valid=32; subtype=KSDATAFORMAT_SUBTYPE_IEEE_FLOAT; break;
         case SampleKind::F64: bits=valid=64; subtype=KSDATAFORMAT_SUBTYPE_IEEE_FLOAT; break;
