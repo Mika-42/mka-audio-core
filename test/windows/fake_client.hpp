@@ -3,6 +3,7 @@
 #include "fake_com.hpp"
 #include <atomic>
 #include "fake_render.hpp"
+#include "fake_capture.hpp"
 #include <cstring>
 namespace wasapi_test {
 inline std::atomic<int> liveClients{0};
@@ -14,6 +15,8 @@ public:
     AUDCLNT_SHAREMODE requestedMode=AUDCLNT_SHAREMODE_EXCLUSIVE;
     unsigned supportCalls=0, initializeCalls=0;
     HRESULT initializeResult=S_OK, bufferSizeResult=S_OK, eventResult=S_OK, renderServiceResult=S_OK;
+    HRESULT captureServiceResult=S_OK;unsigned captureServiceCalls=0;
+    Microsoft::WRL::ComPtr<FakeCapture> capture=makeFake<FakeCapture>();
     HANDLE audioEvent=nullptr;unsigned eventCalls=0, renderServiceCalls=0;
     Microsoft::WRL::ComPtr<FakeRender> render=makeFake<FakeRender>();
     UINT32 bufferFrames=480;
@@ -54,6 +57,7 @@ public:
     HRESULT STDMETHODCALLTYPE GetService(REFIID iid, void** out) override {
         *out=nullptr;
         if (iid==__uuidof(IAudioRenderClient)) { ++renderServiceCalls;if (FAILED(renderServiceResult)) return renderServiceResult;return render->QueryInterface(iid,out); }
+        if (iid==__uuidof(IAudioCaptureClient)) { ++captureServiceCalls;if(FAILED(captureServiceResult))return captureServiceResult;return capture->QueryInterface(iid,out); }
         return E_NOINTERFACE;
     }
 };
