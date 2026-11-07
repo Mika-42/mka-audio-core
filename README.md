@@ -989,7 +989,7 @@ Current development priorities include:
 * [ ] Integrate external DSP block adaptation without adding it to Core Audio
 * [ ] Add comprehensive backend tests
 * [ ] Add real-time safety tests
-* [ ] Add performance/latency benchmarks
+* [x] Add performance/latency benchmarks (opt-in CPU/service/jitter diagnostics; not physical round-trip latency)
 * [ ] Add Windows backend
 * [x] Add macOS backend (CoreAudio HAL; see native validation limits)
 
@@ -1526,3 +1526,12 @@ in this library's CMake build. A core-only build has an empty supported list on
 all operating systems. ASIO, WMME and DirectSound remain known enum values and
 empty source stubs; they are never advertised as compiled/operational backends.
 Availability does not guarantee a running service, a device or permission to open it.
+
+
+The [sprint 7 validation guide](docs/sprint07-validation.md) documents standalone
+module clients, CPU/callback jitter reports, native virtual endurance/hotplug,
+configuration fuzzing and the relocatable `mkaAudioCore` CMake package. Install
+production builds with tests disabled; consumers use `find_package(mkaAudioCore
+CONFIG REQUIRED COMPONENTS ...)` and `mka::core` / `mka::<backend>` targets with a
+matching compiler, runtime and C++ dialect. Private producer source/build paths
+are not needed to consume the relocated prefix.
