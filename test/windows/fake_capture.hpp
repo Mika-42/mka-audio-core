@@ -1,8 +1,9 @@
 #pragma once
+#include "fake_com.hpp"
 #include "fake_render.hpp"
 #include <array>
 namespace wasapi_test {
-class FakeCapture : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IAudioCaptureClient> {
+class FakeCapture : public FakeComObject<FakeCapture, IAudioCaptureClient> {
 public:
     FakeCapture(){++liveServices;}
     ~FakeCapture(){--liveServices;}
