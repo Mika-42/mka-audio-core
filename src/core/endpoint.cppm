@@ -58,3 +58,17 @@ export namespace mka::audio::core {
         BufferSize bufferSize;
     };
 }
+
+#if defined(__MINGW32__) && defined(__GNUC__) && !defined(__clang__) && __GNUC__ == 15
+namespace {
+// GCC 15/COFF can omit implicit aggregate destructors needed by module consumers.
+// Emit them in their owning module without declaring special members, which
+// would suppress implicit moves. Keep this unused anchor uninlined in Release.
+[[gnu::used, gnu::optimize("O0")]]
+void emitEndpointDestructors(mka::audio::core::Endpoint* endpoint,
+                            mka::audio::core::StreamCapabilities* capabilities) noexcept {
+    endpoint->~Endpoint();
+    capabilities->~StreamCapabilities();
+}
+}
+#endif
