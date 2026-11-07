@@ -1535,3 +1535,7 @@ production builds with tests disabled; consumers use `find_package(mkaAudioCore
 CONFIG REQUIRED COMPONENTS ...)` and `mka::core` / `mka::<backend>` targets with a
 matching compiler, runtime and C++ dialect. Private producer source/build paths
 are not needed to consume the relocated prefix.
+
+The maintained [backend / OS support matrix](docs/backend-support.md) lists actual
+implementations, directions, formats, scheduling states and native test limits.
+Known identifiers and successful compilation do not imply an available endpoint.
