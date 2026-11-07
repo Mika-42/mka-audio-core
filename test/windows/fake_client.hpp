@@ -55,7 +55,7 @@ public:
     HRESULT STDMETHODCALLTYPE GetDevicePeriod(REFERENCE_TIME* normal, REFERENCE_TIME* min) override { *normal=period;*min=minimum;return periodResult; }
     HRESULT STDMETHODCALLTYPE Start() override { ++starts;return startResult.load(); }
     HRESULT STDMETHODCALLTYPE Stop() override { ++stops;return stopResult.load(); }
-    HRESULT STDMETHODCALLTYPE Reset() override { ++resets;padding=0;return resetResult.load(); }
+    HRESULT STDMETHODCALLTYPE Reset() override { ++resets;const auto result=resetResult.load();if(SUCCEEDED(result))padding=0;return result; }
     HRESULT STDMETHODCALLTYPE SetEventHandle(HANDLE event) override { ++eventCalls;audioEvent=event;return eventResult; }
     HRESULT STDMETHODCALLTYPE GetService(REFIID iid, void** out) override {
         *out=nullptr;

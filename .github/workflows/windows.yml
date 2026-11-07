@@ -96,10 +96,43 @@ jobs:
       - run: cmake --preset windows-wasapi
       - run: cmake --build --preset windows-wasapi --parallel 2
       - run: ctest --preset windows-wasapi --output-junit "${{ github.workspace }}/junit-wasapi.xml"
+      - name: Hardware integration or explicit unavailable-device skips
+        run: ctest --test-dir build/windows-wasapi -L hardware --no-tests=error --output-on-failure --output-junit "${{ github.workspace }}/junit-wasapi-hardware.xml"
+      - name: Build the production library without test hooks or GoogleTest
+        run: |
+          cmake --preset windows-wasapi -B build/windows-production -DMKA_BUILD_TESTS=OFF
+          cmake --build build/windows-production --parallel 2
+          python -c "import json; from pathlib import Path; c=json.loads(Path('build/windows-production/compile_commands.json').read_text()); assert all('MKA_WASAPI_TESTING' not in x['command'] and 'googletest' not in x['file'] for x in c)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: windows-wasapi-tests
           path: |
-            junit-wasapi.xml
+            junit-wasapi*.xml
             build/windows-wasapi/Testing/Temporary/LastTest.log
+
+  windows-asan:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - run: python -m pip install 'cmake>=4.0,<5' ninja
+      - run: cmake --preset windows-wasapi-asan
+      - run: cmake --build --preset windows-wasapi-asan --parallel 2
+      - name: Verify instrumentation and an isolated negative runtime witness
+        run: ./ci/verify_msvc_asan.ps1
+      - run: ctest --preset windows-wasapi-asan --output-junit "${{ github.workspace }}/junit-wasapi-asan.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-wasapi-asan
+          path: |
+            junit-wasapi-asan.xml
+            build/windows-wasapi-asan/Testing/Temporary/LastTest.log
+            ${{ runner.temp }}/mka-asan-witness.log
