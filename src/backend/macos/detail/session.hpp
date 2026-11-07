@@ -3,6 +3,7 @@
 #include "process.hpp"
 #include <memory>
 #include <expected>
+#include <initializer_list>
 #include <chrono>
 #include <thread>
 
@@ -59,15 +60,23 @@ public:
         state_=std::make_unique<ProcessState>();
         state_->allocate(config.inputs,config.outputs,config.frames);
         if(api_.create(device_,&ioProc,state_.get(),&proc_)!=noErr || !proc_)return std::unexpected{Failure::Configuration};
+        if(auto result=listen();!result)return result;
         opened_=true;rollback.committed=true;
         return {};
     }
-    Result start(Callbacks callbacks) noexcept {
+    Result start(Callbacks callbacks) {
         if(!opened_ || !proc_ || running_)return std::unexpected{Failure::Configuration};
         UInt32 alive=0,frames=0;Float64 rate=0;
         if(!read(api_,device_,kAudioDevicePropertyDeviceIsAlive,alive) || !alive)return std::unexpected{Failure::Unavailable};
         if(!read(api_,device_,kAudioDevicePropertyNominalSampleRate,rate) || rate!=config_.rate)return std::unexpected{Failure::Rate};
         if(!read(api_,device_,kAudioDevicePropertyBufferFrameSize,frames) || frames!=config_.frames)return std::unexpected{Failure::Buffer};
+        for(bool input:{true,false}){
+            if(!(input?config_.input:config_.output))continue;
+            auto caps=capabilities(api_,device_,input?kAudioObjectPropertyScopeInput:kAudioObjectPropertyScopeOutput);
+            if(!caps)return std::unexpected{Failure::Format};
+            if(caps->channels!=(input?config_.inputs:config_.outputs))return std::unexpected{Failure::Channels};
+        }
+        state_->invalidated.store(false,std::memory_order_release);
         quiesce();state_->callbacks=callbacks;state_->failed.store(false,std::memory_order_release);
         state_->accepting.store(true,std::memory_order_release);
         running_=true; // Even a failed start may have partially activated the IOProc.
@@ -93,9 +102,38 @@ public:
             if(api_.destroy(device_,proc_)!=noErr)return std::unexpected{Failure::Configuration};
             proc_=nullptr;
         }
-        running_=false;quiesce();state_.reset();restore();opened_=false;device_=kAudioObjectUnknown;return {};
+        running_=false;
+        while(!listeners_.empty()){
+            const auto& listener=listeners_.back();
+            if(api_.remove(listener.object,&listener.address,&propertyChanged,state_.get())!=noErr)
+                return std::unexpected{Failure::Configuration};
+            listeners_.pop_back();
+        }
+        quiesce();state_.reset();restore();opened_=false;device_=kAudioObjectUnknown;return {};
     }
 private:
+    struct Listener {AudioObjectID object;AudioObjectPropertyAddress address;};
+    Result listen() {
+        std::vector<Listener> pending;
+        for(auto selector:std::initializer_list<AudioObjectPropertySelector>{kAudioDevicePropertyDeviceIsAlive,kAudioDevicePropertyNominalSampleRate,
+            kAudioDevicePropertyBufferFrameSize,kAudioDeviceProcessorOverload})pending.push_back({device_,property(selector)});
+        for(bool input:{true,false}){
+            if(!(input?config_.input:config_.output))continue;
+            const auto scope=input?kAudioObjectPropertyScopeInput:kAudioObjectPropertyScopeOutput;
+            pending.push_back({device_,property(kAudioDevicePropertyStreamConfiguration,scope)});
+            auto streams=arrayProperty<AudioStreamID>(api_,device_,kAudioDevicePropertyStreams,scope);
+            if(!streams)return std::unexpected{Failure::Configuration};
+            for(auto stream:*streams)pending.push_back({stream,property(kAudioStreamPropertyVirtualFormat)});
+        }
+        listeners_.reserve(pending.size());
+        for(const auto& listener:pending){
+            if(api_.add(listener.object,&listener.address,&propertyChanged,state_.get())!=noErr)
+                return std::unexpected{Failure::Configuration};
+            listeners_.push_back(listener);
+        }
+        return {};
+    }
+    std::vector<Listener> listeners_;
     void quiesce() noexcept {
         while(state_ && state_->active.load(std::memory_order_acquire))std::this_thread::yield();
     }

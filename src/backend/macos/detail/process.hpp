@@ -11,8 +11,9 @@ struct Callbacks {
     void (*failed)(void*) noexcept=nullptr;
     void (*xrun)(void*) noexcept=nullptr;
 };
+static_assert(std::atomic<bool>::is_always_lock_free && std::atomic<unsigned>::is_always_lock_free);
 struct ProcessState {
-    std::atomic<bool> accepting{false},failed{false};
+    std::atomic<bool> accepting{false},failed{false},invalidated{false};
     std::atomic<unsigned> active{0};
     UInt32 inputs=0,outputs=0,capacity=0;
     Callbacks callbacks;
@@ -85,6 +86,24 @@ struct ProcessState {
         if(outputs && !failed.load(std::memory_order_acquire))writeOutput(out,count);
     }
 };
+// Native property listeners publish only lock-free flags/events. No HAL query,
+// allocation, logging or lifecycle operation runs on the notification thread.
+inline OSStatus propertyChanged(AudioObjectID,UInt32 count,const AudioObjectPropertyAddress* addresses,void* user) noexcept {
+    auto& state=*static_cast<ProcessState*>(user);
+    state.active.fetch_add(1,std::memory_order_acq_rel);
+    bool changed=false;
+    for(UInt32 i=0;i<count;++i){
+        if(addresses[i].mSelector==kAudioDeviceProcessorOverload){
+            if(state.accepting.load(std::memory_order_acquire) && state.callbacks.xrun)state.callbacks.xrun(state.callbacks.user);
+        }else changed=true;
+    }
+    if(changed){
+        state.invalidated.store(true,std::memory_order_release);
+        if(state.accepting.load(std::memory_order_acquire))state.fail();
+    }
+    state.active.fetch_sub(1,std::memory_order_release);
+    return noErr;
+}
 inline OSStatus ioProc(AudioObjectID,const AudioTimeStamp*,const AudioBufferList* input,
     const AudioTimeStamp*,AudioBufferList* output,const AudioTimeStamp*,void* user) noexcept {
     auto& state=*static_cast<ProcessState*>(user);
