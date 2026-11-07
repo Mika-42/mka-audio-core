@@ -1412,6 +1412,12 @@ CMake currently recognizes MSVC's `/std:c++latest` under `cxx_std_23`, not
 `/std:c++latest` draft mode. Other compilers continue to require `cxx_std_26`.
 This does not claim that MSVC implements every future C++26 language feature.
 
+WASAPI owns a persistent COM MTA on a dedicated non-RT control thread. Discovery,
+configuration and native interface release run there, regardless of the caller's
+apartment. Both S_OK and S_FALSE are balanced by CoUninitialize on that same
+thread; failed initialization never uninitializes COM. This control queue is
+separate from the audio worker and is never used by a process callback.
+
 For direct ALSA sine/record-and-replay tests, use the separate audio test executable
 and explicit input/output PCMs. See [manual ALSA diagnosis](docs/manual-alsa.md)
 for commands, signal levels, bounded waits and hardware mixer/ownership checks.
