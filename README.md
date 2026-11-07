@@ -1472,6 +1472,13 @@ optional and reported through the existing RealtimeState status. Stop disables
 new processing, wakes and joins any in-flight callback before native Stop/Reset.
 Close/destruction force quiescence before releasing COM interfaces or buffers.
 
+Terminal WASAPI errors (including device/resource invalidation and a stopped audio
+service) disable processing before Failed is published once through the existing
+status/event mechanism. A 100 ms health check can detect invalidation even when
+the device stops signaling audio events; it never calls DSP from a timeout.
+Temporary BUFFER_ERROR and capture discontinuities count as xruns. Stop/close
+still release an invalidated stream, and a new start resets native failure state.
+
 For direct ALSA sine/record-and-replay tests, use the separate audio test executable
 and explicit input/output PCMs. See [manual ALSA diagnosis](docs/manual-alsa.md)
 for commands, signal levels, bounded waits and hardware mixer/ownership checks.
