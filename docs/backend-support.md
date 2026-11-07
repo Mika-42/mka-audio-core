@@ -1,5 +1,12 @@
 # Backend / OS support
 
+All four Linux backends (ALSA, JACK, PipeWire and PulseAudio) are supported and
+functional within their documented capabilities. Windows and macOS are not yet
+operationally supported: their implementations and CI checks exist, while complete
+operational validation remains in progress. This is the support status summarized
+in the project and example READMEs; the table below describes implementation
+capabilities and available evidence.
+
 This matrix describes the implementations in this repository. `AudioBackend` and
 `knownBackends` identify known backends; `supportedBackends` / `isBackendCompiled()`
 reflect the producer's CMake options. Neither implies an available service,
