@@ -1,11 +1,11 @@
 #pragma once
 #include <audioclient.h>
-#include <wrl/implements.h>
+#include "fake_com.hpp"
 #include <vector>
 #include <atomic>
 namespace wasapi_test {
 inline std::atomic<int> liveServices{0};
-class FakeRender : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IAudioRenderClient> {
+class FakeRender : public FakeComObject<FakeRender, IAudioRenderClient> {
 public:
     FakeRender(){++liveServices;}
     ~FakeRender(){--liveServices;}

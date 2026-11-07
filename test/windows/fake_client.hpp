@@ -1,12 +1,12 @@
 #pragma once
 #include "../../src/backend/windows/detail/wasapi_format.hpp"
-#include <wrl/implements.h>
+#include "fake_com.hpp"
 #include <atomic>
 #include "fake_render.hpp"
 #include <cstring>
 namespace wasapi_test {
 inline std::atomic<int> liveClients{0};
-class FakeAudioClient : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IAudioClient> {
+class FakeAudioClient : public FakeComObject<FakeAudioClient, IAudioClient> {
 public:
     WAVEFORMATEXTENSIBLE mix{};
     HRESULT mixResult=S_OK, periodResult=S_OK, supportResult=S_OK;
@@ -15,7 +15,7 @@ public:
     unsigned supportCalls=0, initializeCalls=0;
     HRESULT initializeResult=S_OK, bufferSizeResult=S_OK, eventResult=S_OK, renderServiceResult=S_OK;
     HANDLE audioEvent=nullptr;unsigned eventCalls=0, renderServiceCalls=0;
-    Microsoft::WRL::ComPtr<FakeRender> render=Microsoft::WRL::Make<FakeRender>();
+    Microsoft::WRL::ComPtr<FakeRender> render=makeFake<FakeRender>();
     UINT32 bufferFrames=480;
     AUDCLNT_SHAREMODE initializedMode=AUDCLNT_SHAREMODE_EXCLUSIVE;
     DWORD initializedFlags=0;REFERENCE_TIME duration=0,periodicity=-1;
