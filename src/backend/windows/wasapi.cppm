@@ -3,8 +3,10 @@ module;
 #include <expected>
 #include <vector>
 #include "detail/wasapi_session.hpp"
+#include "detail/wasapi_convert.hpp"
 export module mka.audio.backend.wasapi;
 export import mka.audio.backend.abstract;
+import mka.audio.convert;
 
 export namespace mka::audio::core {
 class Wasapi final : public Backend {
@@ -20,7 +22,7 @@ protected:
             using Kind = mka_wasapi_detail::SampleKind;
             switch (*device.kind) {
                 case Kind::S16: format = Format::Int16; break;
-                case Kind::S24Packed: case Kind::S24In32: format = Format::Int24; break;
+                case Kind::S24Packed: case Kind::S24Msb32: format = Format::Int24; break;
                 case Kind::S32: format = Format::Int32; break;
                 case Kind::F32: format = Format::Float32; break;
                 case Kind::F64: format = Format::Float64; break;
@@ -54,6 +56,25 @@ protected:
     Result stop_() override { return std::unexpected{ErrorType::ConfigurationFailed}; }
     Result close_() override { return nativeResult(session_.close()); }
 private:
+    struct Conversion {
+        using Layout = mka::audio::convert::Layout;
+        static void read(Layout layout,const std::byte* source,std::size_t stride,float* out,std::size_t frames) noexcept {
+            mka::audio::convert::readChannel(layout,source,stride,out,frames);
+        }
+        static void write(Layout layout,std::byte* dest,std::size_t stride,const float* in,std::size_t frames) noexcept {
+            mka::audio::convert::writeChannel(layout,dest,stride,in,frames);
+        }
+    };
+    mka_wasapi_detail::Callbacks callbacks() noexcept {
+        return {this,callback ? +[](void* user,const float* const* input,std::uint32_t inputs,
+            float* const* output,std::uint32_t outputs,std::uint32_t frames) noexcept {
+                auto& self=*static_cast<Wasapi*>(user);
+                self.callback(self.userData,AudioProcessContext{{input,inputs},{output,outputs},frames});
+            } : nullptr,
+            &mka_wasapi_detail::readSamples<Conversion>, &mka_wasapi_detail::writeSamples<Conversion>,
+            +[](void* user) noexcept {static_cast<Wasapi*>(user)->notifyXRun();},
+            +[](void* user) noexcept {static_cast<Wasapi*>(user)->notifyFailed();}};
+    }
     static Result nativeResult(HRESULT result) noexcept {
         if (SUCCEEDED(result)) return {};
         if (result == HRESULT_FROM_WIN32(ERROR_NOT_FOUND) || result == E_ACCESSDENIED

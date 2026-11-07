@@ -1435,7 +1435,7 @@ to allocate another work item.
 WASAPI shared-mode format negotiation accepts only `IsFormatSupported == S_OK`.
 A closest match (`S_FALSE`) is freed and rejected; rate, channels and portable
 format are never silently substituted. WAVEFORMATEXTENSIBLE sizes, byte-rate
-arithmetic and speaker masks are checked. Int24 retains a low-aligned 24-in-32
+arithmetic and speaker masks are checked. Int24 retains a most-significant-bit-aligned 24-in-32
 container when the native mix uses it; otherwise the request uses packed 24-bit.
 
 Shared WASAPI initialization uses the exact validated format, event-callback flag,
@@ -1455,6 +1455,14 @@ Each successful GetBuffer has exactly one ReleaseBuffer, including rejected
 packets; empty/failed acquisitions are not released. SILENT packets may have a
 null data pointer. Non-silent null data, oversized frames and unknown flags never
 reach processing. Borrowed native bytes remain valid only until ReleaseBuffer.
+
+The WASAPI process bridge uses preallocated planar Float32 storage and borrowed
+pointer tables for the active direction; the inactive side is null with count
+zero. Output is silent before each callback, native padding bounds render frames,
+and capture frames are bounded by native capacity. Conversion reuses the core
+converters. WAVEFORMATEXTENSIBLE PCM24 in a 32-bit container is high-aligned (unlike
+ALSA's low-aligned S24In32); its adapter shifts the valid bits explicitly and
+ignores input padding. No conversion buffer is allocated on the audio path.
 
 For direct ALSA sine/record-and-replay tests, use the separate audio test executable
 and explicit input/output PCMs. See [manual ALSA diagnosis](docs/manual-alsa.md)

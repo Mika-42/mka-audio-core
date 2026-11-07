@@ -20,6 +20,7 @@ public:
     HANDLE audioEvent=nullptr;unsigned eventCalls=0, renderServiceCalls=0;
     Microsoft::WRL::ComPtr<FakeRender> render=makeFake<FakeRender>();
     UINT32 bufferFrames=480;
+    std::atomic<UINT32> padding{0};std::atomic<HRESULT> paddingResult{S_OK};
     AUDCLNT_SHAREMODE initializedMode=AUDCLNT_SHAREMODE_EXCLUSIVE;
     DWORD initializedFlags=0;REFERENCE_TIME duration=0,periodicity=-1;
     WAVEFORMATEXTENSIBLE initializedFormat{};
@@ -37,7 +38,7 @@ public:
     }
     HRESULT STDMETHODCALLTYPE GetBufferSize(UINT32* out) override { *out=bufferFrames;return bufferSizeResult; }
     HRESULT STDMETHODCALLTYPE GetStreamLatency(REFERENCE_TIME*) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE GetCurrentPadding(UINT32*) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE GetCurrentPadding(UINT32* out) override { *out=padding.load();return paddingResult.load(); }
     HRESULT STDMETHODCALLTYPE IsFormatSupported(AUDCLNT_SHAREMODE mode, const WAVEFORMATEX* f, WAVEFORMATEX** closest) override {
         ++supportCalls;requestedMode=mode;requested={};
         std::memcpy(&requested,f,sizeof(WAVEFORMATEX)+f->cbSize);
