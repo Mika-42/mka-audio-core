@@ -1,0 +1,33 @@
+name: macOS C++26 checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  macos-core:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install C++26 compiler and module scanner
+        run: |
+          brew install llvm ninja cmake
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          echo "CC=$(brew --prefix llvm)/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> "$GITHUB_ENV"
+      - run: cmake --preset macos-core
+      - run: cmake --build --preset macos-core --parallel 2
+      - run: ctest --preset macos-core --output-junit "${{ github.workspace }}/junit-macos-core.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-core-tests
+          path: |
+            junit-macos-core.xml
+            build/macos-core/Testing/Temporary/LastTest.log

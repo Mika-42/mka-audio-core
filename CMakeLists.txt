@@ -40,6 +40,10 @@ if(MKA_BUILD_WASAPI AND NOT WIN32)
 endif()
 
 
+if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    message(FATAL_ERROR "CMake named C++ modules require upstream LLVM clang++ and clang-scan-deps on macOS; install llvm with Homebrew and set CXX=$(brew --prefix llvm)/bin/clang++")
+endif()
+
 # ============================================================
 # Global C++ configuration
 # ============================================================
