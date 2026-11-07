@@ -8,11 +8,12 @@
 #include <thread>
 #include <expected>
 #include <gtest/gtest.h>
+#include "../../utils/alsa_manual_audio.hpp"
 import mka.audio.backend.alsa;
 
 namespace {
 using namespace mka::audio::core;
-enum class Fault { None, SetRate, ReadRate, RateValue, RateDirection, SetPeriod, SetPeriods, ReadPeriod, PeriodValue, PeriodDirection, ReadBuffer, ShortBuffer, FractionalBuffer, ReadPeriods, PeriodsValue, PeriodsDirection, PlaybackChannels, ChannelsReadback };
+enum class Fault { None, SetRate, ReadRate, RateValue, RateDirection, SetPeriod, SetPeriods, SetPeriodsInteger, ReadPeriod, PeriodValue, PeriodDirection, ReadBuffer, ShortBuffer, FractionalBuffer, ReadPeriods, PeriodsValue, PeriodsDirection, PlaybackChannels, ChannelsReadback };
 std::atomic<Fault> fault{Fault::None};
 std::atomic<int> liveHandles{0};
 unsigned requestedRate = 0;
@@ -20,12 +21,27 @@ int requestedDirection = 1;
 bool emulateLinkedDevice = false;
 unsigned captureChannels = 0, playbackChannels = 0;
 unsigned unlinkCalls = 0;
+unsigned fixedPeriods = 0;
 std::atomic<int> injectAvail{0};
 std::atomic<bool> persistentXrun{false}, zeroChunk{false}, shortCommit{false};
 std::atomic<unsigned> resumes{0};
 std::atomic<bool> inspectSilence{false}, audible{false};
 std::atomic<unsigned> silentCommits{0};
 thread_local const snd_pcm_channel_area_t* mappedAreas = nullptr;
+// Feed known S32 samples through the real null PCM's mmap areas, then inspect
+// replay commits. No physical microphone/speaker is emulated by these checks.
+bool interleavedOnly = false;
+enum class SignalMode { Off, Capture, Playback };
+std::atomic<SignalMode> signalMode{SignalMode::Off};
+std::atomic<bool> badSignal{false};
+std::atomic<std::size_t> checkedSignalFrames{0};
+std::size_t playbackFrame = 0;
+constexpr std::size_t clipFrames = 4 * alsa_manual::period;
+constexpr std::size_t signalStart = 2 * alsa_manual::period + alsa_manual::rate / 5;
+std::int32_t signalSample(unsigned ch, std::size_t frame) {
+    return ch == 0 ? (frame % 2 ? 0x20000000 : 0x10000000)
+                   : (frame % 2 ? -0x40000000 : -0x30000000);
+}
 template<class P> bool waitFor(P p) {
     const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     while (!p() && std::chrono::steady_clock::now() < end) std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -34,7 +50,7 @@ template<class P> bool waitFor(P p) {
 EndpointConfig config() { return {"null", Direction::Output, 0, 2, 48000, Format::Float32, 256}; }
 class AlsaNativeContract : public ::testing::Test {
 protected:
-    void SetUp() override { injectAvail = 0; persistentXrun = zeroChunk = shortCommit = false; resumes = 0; fault = Fault::None; emulateLinkedDevice = false; captureChannels = playbackChannels = unlinkCalls = 0; EXPECT_EQ(liveHandles.load(), 0); }
+    void SetUp() override { injectAvail = 0; persistentXrun = zeroChunk = shortCommit = false; resumes = 0; fault = Fault::None; emulateLinkedDevice = false; captureChannels = playbackChannels = unlinkCalls = fixedPeriods = 0; interleavedOnly = false; signalMode = SignalMode::Off; badSignal = false; checkedSignalFrames = 0; playbackFrame = 0; EXPECT_EQ(liveHandles.load(), 0); }
     void TearDown() override { fault = Fault::None; EXPECT_EQ(liveHandles.load(), 0); }
 };
 }
@@ -47,6 +63,21 @@ int __wrap_snd_pcm_open(snd_pcm_t** pcm, const char* name, snd_pcm_stream_t stre
 }
 int __real_snd_pcm_close(snd_pcm_t*);
 int __wrap_snd_pcm_close(snd_pcm_t* pcm) { --liveHandles; return __real_snd_pcm_close(pcm); }
+int __real_snd_pcm_hw_params_any(snd_pcm_t*, snd_pcm_hw_params_t*);
+int __wrap_snd_pcm_hw_params_any(snd_pcm_t* pcm, snd_pcm_hw_params_t* hw) {
+    const int result = __real_snd_pcm_hw_params_any(pcm, hw);
+    if (result < 0 || fixedPeriods == 0) return result;
+    unsigned min = fixedPeriods, max = fixedPeriods;
+    int minDirection = 0, maxDirection = 0;
+    // The AMD acp63 PDM driver fixes periods_min = periods_max = 4.
+    // Restrict the real native parameter space, rather than forge readbacks.
+    return snd_pcm_hw_params_set_periods_minmax(pcm, hw, &min, &minDirection, &max, &maxDirection);
+}
+int __real_snd_pcm_hw_params_set_access(snd_pcm_t*, snd_pcm_hw_params_t*, snd_pcm_access_t);
+int __wrap_snd_pcm_hw_params_set_access(snd_pcm_t* pcm, snd_pcm_hw_params_t* hw, snd_pcm_access_t access) {
+    if (interleavedOnly && access != SND_PCM_ACCESS_MMAP_INTERLEAVED) return -EINVAL;
+    return __real_snd_pcm_hw_params_set_access(pcm, hw, access);
+}
 int __real_snd_pcm_hw_params_set_rate(snd_pcm_t*, snd_pcm_hw_params_t*, unsigned, int);
 int __wrap_snd_pcm_hw_params_set_rate(snd_pcm_t* pcm, snd_pcm_hw_params_t* hw, unsigned rate, int dir) {
     requestedRate = rate; requestedDirection = dir;
@@ -94,10 +125,15 @@ int __wrap_snd_pcm_hw_params_set_period_size(snd_pcm_t* p, snd_pcm_hw_params_t* 
     if (fault == Fault::SetPeriod) return -EINVAL;
     return __real_snd_pcm_hw_params_set_period_size(p,h,n,d);
 }
-int __real_snd_pcm_hw_params_set_periods(snd_pcm_t*, snd_pcm_hw_params_t*, unsigned, int);
-int __wrap_snd_pcm_hw_params_set_periods(snd_pcm_t* p, snd_pcm_hw_params_t* h, unsigned n, int d) {
+int __real_snd_pcm_hw_params_set_periods_integer(snd_pcm_t*, snd_pcm_hw_params_t*);
+int __wrap_snd_pcm_hw_params_set_periods_integer(snd_pcm_t* p, snd_pcm_hw_params_t* h) {
+    if (fault == Fault::SetPeriodsInteger) return -EINVAL;
+    return __real_snd_pcm_hw_params_set_periods_integer(p,h);
+}
+int __real_snd_pcm_hw_params_set_periods_near(snd_pcm_t*, snd_pcm_hw_params_t*, unsigned*, int*);
+int __wrap_snd_pcm_hw_params_set_periods_near(snd_pcm_t* p, snd_pcm_hw_params_t* h, unsigned* n, int* d) {
     if (fault == Fault::SetPeriods) return -EINVAL;
-    return __real_snd_pcm_hw_params_set_periods(p,h,n,d);
+    return __real_snd_pcm_hw_params_set_periods_near(p,h,n,d);
 }
 int __real_snd_pcm_hw_params_get_period_size(const snd_pcm_hw_params_t*, snd_pcm_uframes_t*, int*);
 int __wrap_snd_pcm_hw_params_get_period_size(const snd_pcm_hw_params_t* h, snd_pcm_uframes_t* n, int* d) {
@@ -124,12 +160,12 @@ int __wrap_snd_pcm_hw_params_get_periods(const snd_pcm_hw_params_t* h, unsigned*
     return r;
 }
 }
-TEST_F(AlsaNativeContract, ExactPeriodAndThreePeriodRingAreRequired) {
+TEST_F(AlsaNativeContract, ExactPeriodAndConsistentWholePeriodRingAreRequired) {
     for (const auto size : {64u, 256u, 4096u}) {
         ALSA b; auto cfg = config(); cfg.bufferSize = size;
         ASSERT_TRUE(b.open(cfg)); ASSERT_TRUE(b.close());
     }
-    for (const auto injected : {Fault::SetPeriod, Fault::SetPeriods, Fault::ReadPeriod,
+    for (const auto injected : {Fault::SetPeriod, Fault::SetPeriods, Fault::SetPeriodsInteger, Fault::ReadPeriod,
         Fault::PeriodValue, Fault::PeriodDirection, Fault::ReadBuffer, Fault::ShortBuffer,
         Fault::FractionalBuffer, Fault::ReadPeriods, Fault::PeriodsValue, Fault::PeriodsDirection}) {
         ALSA b; fault = injected;
@@ -139,6 +175,42 @@ TEST_F(AlsaNativeContract, ExactPeriodAndThreePeriodRingAreRequired) {
         EXPECT_EQ(liveHandles.load(), 0);
         fault = Fault::None; ASSERT_TRUE(b.open(config())); ASSERT_TRUE(b.close());
     }
+}
+
+TEST_F(AlsaNativeContract, Acp63FourPeriodCapturePreservesExact512FrameCallbacks) {
+    fixedPeriods = 4;
+    interleavedOnly = true;
+    auto cfg = alsa_manual::config<EndpointConfig>(true); cfg.id = "null";
+    std::atomic<unsigned> frames{0};
+    ALSA capture;
+    ASSERT_TRUE(capture.setProcessFunction(+[](void* user, const AudioProcessContext& ctx) noexcept {
+        if (ctx.frames == 512 && ctx.input.count == 2 && ctx.output.count == 0)
+            *static_cast<std::atomic<unsigned>*>(user) += ctx.frames;
+    }, &frames));
+    ASSERT_TRUE(capture.open(cfg)) << "acp63 requires four periods, not three";
+    ASSERT_TRUE(capture.start());
+    EXPECT_TRUE(waitFor([&] { return frames.load() >= 4096; }));
+    EXPECT_FALSE(capture.status().failed);
+    ASSERT_TRUE(capture.stop()); ASSERT_TRUE(capture.close());
+}
+
+TEST_F(AlsaNativeContract, TwoPeriodOnlyPlaybackCanStartAndOnePeriodIsRejected) {
+    fixedPeriods = 2;
+    std::atomic<unsigned> calls{0};
+    ALSA playback;
+    ASSERT_TRUE(playback.setProcessFunction(+[](void* user, const AudioProcessContext&) noexcept {
+        ++*static_cast<std::atomic<unsigned>*>(user);
+    }, &calls));
+    ASSERT_TRUE(playback.open(config())); ASSERT_TRUE(playback.start());
+    EXPECT_TRUE(waitFor([&] { return calls.load() > 8; }));
+    EXPECT_FALSE(playback.status().failed);
+    ASSERT_TRUE(playback.stop()); ASSERT_TRUE(playback.close());
+
+    fixedPeriods = 1;
+    const auto rejected = playback.open(config());
+    ASSERT_FALSE(rejected);
+    EXPECT_EQ(rejected.error(), ErrorType::BufferSizeNotSupported);
+    EXPECT_EQ(liveHandles.load(), 0);
 }
 
 extern "C" {
@@ -218,6 +290,18 @@ int __wrap_snd_pcm_mmap_begin(snd_pcm_t* p, const snd_pcm_channel_area_t** a, sn
     const int r = __real_snd_pcm_mmap_begin(p,a,o,n);
     if (r >= 0 && zeroChunk.exchange(false)) *n = 0;
     mappedAreas = r >= 0 ? *a : nullptr;
+    if (signalMode != SignalMode::Off && mappedAreas) {
+        // Odd-sized chunks exercise interleaved channel strides, ring offsets
+        // and partial-period assembly instead of testing only offset zero.
+        *n = std::min<snd_pcm_uframes_t>(*n, 37);
+        if (signalMode == SignalMode::Capture) {
+            for (unsigned ch = 0; ch < 2; ++ch) for (snd_pcm_uframes_t i = 0; i < *n; ++i) {
+                auto* dst = static_cast<std::byte*>(mappedAreas[ch].addr) + mappedAreas[ch].first / 8 + (*o + i) * (mappedAreas[ch].step / 8);
+                const auto value = signalSample(ch, *o + i);
+                std::memcpy(dst, &value, sizeof(value));
+            }
+        }
+    }
     if (inspectSilence && mappedAreas) {
         const float dirty = 0.25f;
         for (unsigned ch = 0; ch < 2; ++ch) for (snd_pcm_uframes_t i = 0; i < *n; ++i) {
@@ -229,6 +313,21 @@ int __wrap_snd_pcm_mmap_begin(snd_pcm_t* p, const snd_pcm_channel_area_t** a, sn
 }
 snd_pcm_sframes_t __real_snd_pcm_mmap_commit(snd_pcm_t*, snd_pcm_uframes_t, snd_pcm_uframes_t);
 snd_pcm_sframes_t __wrap_snd_pcm_mmap_commit(snd_pcm_t* p, snd_pcm_uframes_t o, snd_pcm_uframes_t n) {
+    if (signalMode == SignalMode::Playback && mappedAreas) {
+        for (snd_pcm_uframes_t i = 0; i < n; ++i) {
+            const auto frame = playbackFrame + i;
+            const bool inClip = frame >= signalStart && frame - signalStart < clipFrames;
+            for (unsigned ch = 0; ch < 2; ++ch) {
+                const auto* src = static_cast<const std::byte*>(mappedAreas[ch].addr) + mappedAreas[ch].first / 8 + (o + i) * (mappedAreas[ch].step / 8);
+                std::int32_t value;
+                std::memcpy(&value, src, sizeof(value));
+                const std::int64_t expected = inClip ? signalSample(ch, frame - signalStart) : 0;
+                if (std::abs(static_cast<std::int64_t>(value) - expected) > 1) badSignal = true;
+            }
+            if (inClip) ++checkedSignalFrames;
+        }
+        playbackFrame += n;
+    }
     if (inspectSilence && mappedAreas) {
         for (unsigned ch = 0; ch < 2; ++ch) for (snd_pcm_uframes_t i = 0; i < n; ++i) {
             const auto* src = static_cast<const std::byte*>(mappedAreas[ch].addr)+mappedAreas[ch].first/8+(o+i)*(mappedAreas[ch].step/8);
@@ -280,4 +379,49 @@ TEST_F(AlsaNativeContract, NullCallbackWritesNativeSilence) {
     inspectSilence = false;
     ASSERT_TRUE(b.stop()); ASSERT_TRUE(b.close());
     EXPECT_FALSE(audible.load());
+}
+
+TEST_F(AlsaNativeContract, S32CaptureAndReplayPreserveSignalInPlanarAndInterleavedMmap) {
+    for (const bool interleaved : {false, true}) {
+        SCOPED_TRACE(interleaved ? "interleaved" : "noninterleaved");
+        interleavedOnly = interleaved;
+        alsa_manual::Clip clip(clipFrames);
+        auto cfg = alsa_manual::config<EndpointConfig>(true);
+        cfg.id = "null";
+        signalMode = SignalMode::Capture;
+        {
+            ALSA recorder;
+            ASSERT_TRUE(recorder.setProcessFunction(+[](void* user, const AudioProcessContext& ctx) noexcept {
+                static_cast<alsa_manual::Clip*>(user)->record(ctx);
+            }, &clip));
+            ASSERT_TRUE(recorder.open(cfg)); ASSERT_TRUE(recorder.start());
+            EXPECT_TRUE(alsa_manual::wait(recorder, [&] { return clip.recorded.load() == clip.capacity; }, std::chrono::seconds(2)));
+            EXPECT_FALSE(recorder.status().failed);
+            ASSERT_TRUE(recorder.stop()); ASSERT_TRUE(recorder.close());
+        }
+        ASSERT_EQ(clip.recorded.load(), clip.capacity);
+        for (unsigned ch = 0; ch < 2; ++ch) for (std::size_t i = 0; i < clip.capacity; ++i) {
+            const auto expected = static_cast<float>(static_cast<double>(signalSample(ch, i)) / 2147483648.0);
+            ASSERT_FLOAT_EQ(clip.samples[ch][i], expected) << "channel=" << ch << " frame=" << i;
+        }
+        EXPECT_FLOAT_EQ(clip.level().peak, 0.5f);
+        EXPECT_GT(clip.level().rms, 0.3);
+
+        cfg = alsa_manual::config<EndpointConfig>(false); cfg.id = "null";
+        playbackFrame = 0; checkedSignalFrames = 0; badSignal = false;
+        signalMode = SignalMode::Playback;
+        {
+            ALSA player;
+            ASSERT_TRUE(player.setProcessFunction(+[](void* user, const AudioProcessContext& ctx) noexcept {
+                static_cast<alsa_manual::Clip*>(user)->play(ctx);
+            }, &clip));
+            ASSERT_TRUE(player.open(cfg)); ASSERT_TRUE(player.start());
+            EXPECT_TRUE(alsa_manual::wait(player, [&] { return clip.played.load() >= clip.lead + clip.capacity + clip.tail; }, std::chrono::seconds(2)));
+            EXPECT_FALSE(player.status().failed);
+            ASSERT_TRUE(player.stop()); ASSERT_TRUE(player.close());
+        }
+        signalMode = SignalMode::Off;
+        EXPECT_EQ(checkedSignalFrames.load(), clip.capacity);
+        EXPECT_FALSE(badSignal.load());
+    }
 }
