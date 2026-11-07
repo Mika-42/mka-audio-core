@@ -2,7 +2,7 @@
 module;
 #include <expected>
 #include <vector>
-#include "detail/wasapi_control.hpp"
+#include "detail/wasapi_devices.hpp"
 export module mka.audio.backend.wasapi;
 export import mka.audio.backend.abstract;
 
@@ -13,8 +13,10 @@ public:
     ~Wasapi() override { stopDispatcher(); (void)stop(); (void)close(); }
 protected:
     std::vector<Endpoint> getEndPoints_() const override {
-        if (FAILED(control_.initialization())) return {};
-        return control_.invoke([] { return std::vector<Endpoint>{}; });
+        std::vector<Endpoint> endpoints;
+        for (auto& device : mka_wasapi_detail::enumerateDevices(control_))
+            endpoints.push_back(Endpoint{.id = std::move(device.id), .name = std::move(device.name)});
+        return endpoints;
     }
     Result open_(const EndpointConfig&) override {
         if (FAILED(control_.initialization())) return std::unexpected{ErrorType::ConfigurationFailed};
