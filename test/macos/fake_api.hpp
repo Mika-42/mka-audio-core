@@ -1,5 +1,6 @@
 #pragma once
 #include "../../src/backend/macos/detail/session.hpp"
+#include <array>
 #include <cstring>
 #include <string>
 
@@ -10,6 +11,8 @@ struct FakeApi {
     Api api;
     UInt32 inputs=2,outputs=2,frames=256,alive=1;
     Float64 rate=48000;
+    bool twoDevices=false;
+    std::vector<AudioObjectID> openedObjects;
     bool malformed=false,canSet=true,floatFormat=true,roundFrames=false;
     AudioObjectPropertySelector failGet=0;
     int failCreate=0,failStart=0,failStop=0,failDestroy=0,failRemove=0,failAddAt=0;
@@ -35,6 +38,7 @@ struct FakeApi {
     static OSStatus size(AudioObjectID,const AudioObjectPropertyAddress* address,UInt32,const void*,UInt32* bytes){
         if(address->mSelector==current->failGet)return kAudioHardwareUnknownPropertyError;
         switch(address->mSelector){
+            case kAudioHardwarePropertyDevices:*bytes=current->twoDevices?2*sizeof(AudioObjectID):sizeof(AudioObjectID);break;
             case kAudioDevicePropertyStreamConfiguration:*bytes=sizeof(AudioBufferList);break;
             case kAudioDevicePropertyAvailableNominalSampleRates:*bytes=sizeof(AudioValueRange);break;
             default:*bytes=sizeof(UInt32);break;
@@ -47,11 +51,13 @@ struct FakeApi {
         if(address->mSelector==f.failGet)return kAudioHardwareUnknownPropertyError;
         switch(address->mSelector){
             case kAudioHardwarePropertyDevices:
+                if(f.twoDevices)return copy(bytes,out,std::array<AudioObjectID,2>{101,102});
+                return copy(bytes,out,AudioObjectID{101});
             case kAudioHardwarePropertyDefaultInputDevice:
             case kAudioHardwarePropertyDefaultOutputDevice:return copy(bytes,out,AudioObjectID{101});
             case kAudioDevicePropertyDeviceIsAlive:return copy(bytes,out,f.alive);
             case kAudioDevicePropertyDeviceUID:{
-                CFStringRef value=CFStringCreateWithCString(nullptr,"fake-duplex",kCFStringEncodingUTF8);
+                CFStringRef value=CFStringCreateWithCString(nullptr,object==102?"fake-secondary":"fake-duplex",kCFStringEncodingUTF8);
                 const auto status=copy(bytes,out,value);if(status)CFRelease(value);return status;
             }
             case kAudioObjectPropertyName:{
@@ -63,9 +69,9 @@ struct FakeApi {
                 list.mBuffers[0].mNumberChannels=address->mScope==kAudioObjectPropertyScopeInput?f.inputs:f.outputs;
                 return copy(bytes,out,list);
             }
-            case kAudioDevicePropertyStreams:return copy(bytes,out,AudioStreamID{address->mScope==kAudioObjectPropertyScopeInput?201u:202u});
+            case kAudioDevicePropertyStreams:return copy(bytes,out,AudioStreamID{(object==102?300u:200u)+(address->mScope==kAudioObjectPropertyScopeInput?1u:2u)});
             case kAudioStreamPropertyVirtualFormat:{
-                const auto channels=object==201?f.inputs:f.outputs;
+                const auto channels=(object==201 || object==301)?f.inputs:f.outputs;
                 AudioStreamBasicDescription format{};
                 format.mSampleRate=f.rate;format.mFormatID=kAudioFormatLinearPCM;
                 format.mFormatFlags=kAudioFormatFlagIsPacked|(f.floatFormat?kAudioFormatFlagIsFloat:kAudioFormatFlagIsSignedInteger);
@@ -90,10 +96,10 @@ struct FakeApi {
         }
         return kAudioHardwareUnknownPropertyError;
     }
-    static OSStatus create(AudioObjectID,AudioDeviceIOProc proc,void* user,AudioDeviceIOProcID* id){
+    static OSStatus create(AudioObjectID object,AudioDeviceIOProc proc,void* user,AudioDeviceIOProcID* id){
         auto& f=*current;++f.creates;
         if(f.failCreate-->0)return kAudioHardwareIllegalOperationError;
-        f.proc=proc;f.user=user;*id=proc;return noErr;
+        f.openedObjects.push_back(object);f.proc=proc;f.user=user;*id=proc;return noErr;
     }
     static OSStatus destroy(AudioObjectID,AudioDeviceIOProcID){
         auto& f=*current;
