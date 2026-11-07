@@ -1482,6 +1482,9 @@ still release an invalidated stream, and a new start resets native failure state
 The Windows suite includes the public WASAPI error/status/event contract, 1,000
 complete lifecycle cycles, controlled SDK failures, C++ allocation probes and
 separate hardware cases. See [WASAPI validation](docs/sprint05-validation.md).
+For audible Windows tests, use the [manual WASAPI runner](docs/manual-wasapi.md)
+to play a sine wave or record five seconds and immediately replay the microphone,
+with per-channel signal levels and a diagnostic WAV.
 `windows-wasapi-asan` selects MSVC AddressSanitizer (`MKA_SANITIZER=address`),
 without incompatible runtime checks or allocator interposition. The CI validates
 its flags and a negative runtime witness; it does not claim Windows UBSan/TSan/LSan.
