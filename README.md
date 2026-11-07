@@ -1464,6 +1464,14 @@ converters. WAVEFORMATEXTENSIBLE PCM24 in a 32-bit container is high-aligned (un
 ALSA's low-aligned S24In32); its adapter shifts the valid bits explicitly and
 ignores input padding. No conversion buffer is allocated on the audio path.
 
+Start prepares an MTA processing worker and silent render prefill before starting
+the native client. User processing is enabled only after native Start succeeds;
+startup failure signals and joins the pending worker. The audio loop waits on its
+native audio/stop events outside processing. MMCSS Pro Audio registration is
+optional and reported through the existing RealtimeState status. Stop disables
+new processing, wakes and joins any in-flight callback before native Stop/Reset.
+Close/destruction force quiescence before releasing COM interfaces or buffers.
+
 For direct ALSA sine/record-and-replay tests, use the separate audio test executable
 and explicit input/output PCMs. See [manual ALSA diagnosis](docs/manual-alsa.md)
 for commands, signal levels, bounded waits and hardware mixer/ownership checks.
