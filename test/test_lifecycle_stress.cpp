@@ -1,6 +1,8 @@
 #include <atomic>
+#include <chrono>
 #include <expected>
 #include <memory>
+#include <thread>
 #include <gtest/gtest.h>
 import mka.audio.backend.abstract;
 #include "utils/backend_test_config.hpp"
