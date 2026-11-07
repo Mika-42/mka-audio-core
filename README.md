@@ -1518,3 +1518,11 @@ and `macos-coreaudio-asan` for ASan/UBSan. Requests use a device UID from discov
 Capture requires microphone permission for the host application/terminal.
 See [CoreAudio validation and transport limits](docs/sprint06-validation.md) for
 supported layouts, exact rate/buffer handling, hardware tests and RT evidence.
+
+Backend availability comes from `import mka.audio.backend.plateform` (the historical
+module spelling is preserved). `knownBackends` lists all stable identifiers;
+`supportedBackends` and `isBackendCompiled()` describe the implementations enabled
+in this library's CMake build. A core-only build has an empty supported list on
+all operating systems. ASIO, WMME and DirectSound remain known enum values and
+empty source stubs; they are never advertised as compiled/operational backends.
+Availability does not guarantee a running service, a device or permission to open it.

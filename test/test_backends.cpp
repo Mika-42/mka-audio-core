@@ -17,3 +17,10 @@ TEST(BackendAvailability, KnownIdentifiersAndActualLibraryBuildAreDistinct) {
     EXPECT_FALSE(isBackendKnown(static_cast<AudioBackend>(-1)));
     EXPECT_FALSE(isBackendCompiled(static_cast<AudioBackend>(-1)));
 }
+TEST(BackendAvailability, PlaceholderWindowsModulesNeverAdvertiseAnImplementation) {
+    for(auto placeholder:{AudioBackend::Asio,AudioBackend::Wmme,AudioBackend::DirectSound}){
+        EXPECT_TRUE(isBackendKnown(placeholder));EXPECT_FALSE(isBackendCompiled(placeholder));
+    }
+    for(std::size_t i=0;i<supportedBackends.size();++i)
+        for(std::size_t j=i+1;j<supportedBackends.size();++j)EXPECT_NE(supportedBackends[i],supportedBackends[j]);
+}
