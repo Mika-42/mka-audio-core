@@ -69,6 +69,15 @@ public:
             TaskPtr<WAVEFORMATEX> closest(rawClosest);
             // S_FALSE offers a replacement format, not the exact requested one.
             if (support != S_OK) return FAILED(support) ? support : AUDCLNT_E_UNSUPPORTED_FORMAT;
+            const auto duration = frameDuration(pending.frames,pending.rate);
+            if (!duration) return E_INVALIDARG;
+            result = client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                *duration, 0, &format->Format, nullptr);
+            if (FAILED(result)) return result;
+            UINT32 capacity = 0;
+            if (FAILED(result = client->GetBufferSize(&capacity))) return result;
+            if (!validCapacity(capacity,pending.channels)) return AUDCLNT_E_BUFFER_SIZE_ERROR;
+            capacity_ = capacity;
             format_ = *format;
             request_ = std::move(pending);
             device_ = std::move(device); client_ = std::move(client);
@@ -78,10 +87,11 @@ public:
     HRESULT close() {
         if (FAILED(control_.initialization())) return control_.initialization();
         return control_.invoke([&]() -> HRESULT {
-            client_.Reset(); device_.Reset(); request_ = {}; format_ = {};
+            client_.Reset(); device_.Reset(); request_ = {}; format_ = {}; capacity_ = 0;
             return S_OK;
         });
     }
+    std::uint32_t capacity() const noexcept { return capacity_; }
     const WAVEFORMATEXTENSIBLE& nativeFormat() const noexcept { return format_; }
 private:
     ControlThread& control_;
@@ -89,5 +99,6 @@ private:
     ComPtr<IAudioClient> client_;
     Request request_;
     WAVEFORMATEXTENSIBLE format_{};
+    std::uint32_t capacity_ = 0;
 };
 }

@@ -11,7 +11,12 @@ public:
     HRESULT mixResult=S_OK, periodResult=S_OK, supportResult=S_OK;
     WAVEFORMATEXTENSIBLE requested{};
     AUDCLNT_SHAREMODE requestedMode=AUDCLNT_SHAREMODE_EXCLUSIVE;
-    unsigned supportCalls=0;
+    unsigned supportCalls=0, initializeCalls=0;
+    HRESULT initializeResult=S_OK, bufferSizeResult=S_OK;
+    UINT32 bufferFrames=480;
+    AUDCLNT_SHAREMODE initializedMode=AUDCLNT_SHAREMODE_EXCLUSIVE;
+    DWORD initializedFlags=0;REFERENCE_TIME duration=0,periodicity=-1;
+    WAVEFORMATEXTENSIBLE initializedFormat{};
     REFERENCE_TIME period=100000, minimum=30000;
     ~FakeAudioClient() { --liveClients; }
     FakeAudioClient() {
@@ -19,8 +24,12 @@ public:
         mix.Format={WAVE_FORMAT_EXTENSIBLE,2,48000,384000,8,32,22};
         mix.Samples.wValidBitsPerSample=32;mix.dwChannelMask=3;mix.SubFormat=KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
     }
-    HRESULT STDMETHODCALLTYPE Initialize(AUDCLNT_SHAREMODE, DWORD, REFERENCE_TIME, REFERENCE_TIME, const WAVEFORMATEX*, LPCGUID) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE GetBufferSize(UINT32*) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE Initialize(AUDCLNT_SHAREMODE mode, DWORD flags, REFERENCE_TIME requested, REFERENCE_TIME period,
+        const WAVEFORMATEX* f, LPCGUID) override {
+        ++initializeCalls;initializedMode=mode;initializedFlags=flags;duration=requested;periodicity=period;
+        initializedFormat={};std::memcpy(&initializedFormat,f,sizeof(WAVEFORMATEX)+f->cbSize);return initializeResult;
+    }
+    HRESULT STDMETHODCALLTYPE GetBufferSize(UINT32* out) override { *out=bufferFrames;return bufferSizeResult; }
     HRESULT STDMETHODCALLTYPE GetStreamLatency(REFERENCE_TIME*) override { return E_NOTIMPL; }
     HRESULT STDMETHODCALLTYPE GetCurrentPadding(UINT32*) override { return E_NOTIMPL; }
     HRESULT STDMETHODCALLTYPE IsFormatSupported(AUDCLNT_SHAREMODE mode, const WAVEFORMATEX* f, WAVEFORMATEX** closest) override {

@@ -87,3 +87,18 @@ inline std::optional<WAVEFORMATEXTENSIBLE> makeWaveFormat(SampleKind kind, std::
     return result;
 }
 }
+
+namespace mka_wasapi_detail {
+inline std::optional<REFERENCE_TIME> frameDuration(std::uint32_t frames, std::uint32_t rate) noexcept {
+    if (!frames || !rate) return {};
+    constexpr std::uint64_t scale=10000000;
+    const auto duration=(static_cast<std::uint64_t>(frames)*scale+rate-1)/rate;
+    if (!duration || duration > static_cast<std::uint64_t>(std::numeric_limits<REFERENCE_TIME>::max())) return {};
+    return static_cast<REFERENCE_TIME>(duration);
+}
+inline bool validCapacity(std::uint32_t frames,std::uint32_t channels) noexcept {
+    if (!frames || !channels) return false;
+    return frames <= std::numeric_limits<std::uint32_t>::max()/sizeof(float)/channels
+        && frames <= std::numeric_limits<std::size_t>::max()/sizeof(float)/channels;
+}
+}
