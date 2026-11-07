@@ -10,6 +10,47 @@ concurrency:
   group: windows-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  windows-mingw15:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    env:
+      CC: gcc
+      CXX: g++
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'cmake>=4.0,<5' ninja
+      - name: Install pinned MinGW-w64 GCC 15.2 (POSIX, UCRT)
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'mingw15.7z'
+          $toolchain = Join-Path $env:RUNNER_TEMP 'mingw15'
+          Invoke-WebRequest -Uri 'https://github.com/brechtsanders/winlibs_mingw/releases/download/15.2.0posix-14.0.0-ucrt-r7/winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.7z' -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne 'a914feafd7462126637d4b8196a31f3fb856ad929768ceb092c99969b43675b3') {
+            throw 'Unexpected MinGW toolchain checksum'
+          }
+          & "$env:ProgramFiles\7-Zip\7z.exe" x $archive "-o$toolchain" -y
+          if ($LASTEXITCODE -ne 0) { throw 'MinGW toolchain extraction failed' }
+          "$toolchain\mingw64\bin" >> $env:GITHUB_PATH
+      - name: Verify the compiler used for the regression
+        shell: pwsh
+        run: |
+          if ((g++ -dumpfullversion) -ne '15.2.0') { throw 'GCC 15.2.0 is required' }
+          if ((g++ -dumpmachine) -ne 'x86_64-w64-mingw32') { throw 'A Windows MinGW target is required' }
+          g++ --version
+      - run: cmake --preset core -B build/windows-mingw15 -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON
+      - run: cmake --build build/windows-mingw15 --parallel 2
+      - run: ctest --test-dir build/windows-mingw15 -L unit --no-tests=error --output-on-failure --parallel 2 --output-junit "$PWD/junit-windows-mingw15.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-mingw15-tests
+          path: |
+            junit-windows-mingw15.xml
+            build/windows-mingw15/Testing/Temporary/LastTest.log
+
   windows-core:
     runs-on: windows-2022
     timeout-minutes: 20
