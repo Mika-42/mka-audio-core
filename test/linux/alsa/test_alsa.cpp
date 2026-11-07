@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 #include <print>
 #include <cmath>
+#include "../../utils/alsa_manual_audio.hpp"
 
 import mka.audio.backend.alsa;
 import mka.audio.process;
@@ -584,164 +585,94 @@ TEST_F(ALSABackendHwTest, TestFullLifecycleOpenStartStopClose) {
     ASSERT_TRUE(alsa.close());
 }
 
-//--- Test Sinewave
-namespace {
-    double g_sinePhase = 0.0;
-    double g_sinePhaseIncrement = 0.0;
-
-    void sineCallback(void *, const mka::audio::core::AudioProcessContext &ctx) noexcept {
-        for (std::uint32_t i = 0; i < ctx.frames; ++i) {
-            constexpr float amplitude = 0.2f;
-            const auto sample = static_cast<float>(std::sin(g_sinePhase) * amplitude);
-
-            for (std::uint32_t ch = 0; ch < ctx.output.count; ++ch) {
-                ctx.output.channels[ch][i] = sample;
-            }
-
-            g_sinePhase += g_sinePhaseIncrement;
-            if (g_sinePhase >= 2.0 * std::numbers::pi) {
-                g_sinePhase -= 2.0 * std::numbers::pi;
-            }
-        }
-    }
+// Remain disabled in CI; run these explicitly with --gtest_also_run_disabled_tests.
+// This suite does not inherit the old hard-coded hw:1,0 hardware fixture.
+TEST(ALSAManualTest, DISABLED_TestPlaySineWave) {
+    alsa_manual::Tone tone;
+    mka::audio::core::ALSA backend;
+    ASSERT_TRUE(backend.setProcessFunction(+[](void* user,const mka::audio::core::AudioProcessContext& ctx) noexcept {
+        static_cast<alsa_manual::Tone*>(user)->process(ctx);
+    },&tone));
+    ASSERT_TRUE(alsa_manual::open(backend,alsa_manual::config<mka::audio::core::EndpointConfig>(false)));
+    ASSERT_TRUE(backend.start());
+    const bool complete=alsa_manual::wait(backend,[&]{return tone.frames.load()>=tone.total;},std::chrono::seconds(8));
+    const auto status=backend.status();
+    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
+    std::println("Sinus: {} frames generees, {} xruns, echec={}",tone.frames.load(),status.xruns,status.failed);
+    ASSERT_TRUE(complete)<<"Le callback de sortie n'a pas progresse jusqu'au bout (voir status/PCM).";
+    EXPECT_FALSE(status.failed);
 }
 
-// To togle remove DISABLED_
-TEST_F(ALSABackendHwTest, DISABLED_TestPlaySineWave) {
-    mka::audio::core::ALSA alsa;
-
-    constexpr mka::audio::core::SampleRate sampleRate = 44100;
-    constexpr double frequency = 440.0;
-
-    const mka::audio::core::EndpointConfig config{
-        .id = "hw:1,0",
-        .direction = mka::audio::core::Direction::Output,
-        .inputChannels = 0,
-        .outputChannels = 2,
-        .sampleRate = sampleRate,
-        .format = mka::audio::core::Format::Int32,
-        .bufferSize = 512,
-    };
-
-    g_sinePhase = 0.0;
-    g_sinePhaseIncrement = 2.0 * std::numbers::pi * frequency / static_cast<double>(sampleRate);
-
-    ASSERT_TRUE(alsa.setProcessFunction(sineCallback));
-    ASSERT_TRUE(alsa.open(config));
-    ASSERT_TRUE(alsa.start());
-
-    std::this_thread::sleep_for(std::chrono::seconds(3));
-
-    ASSERT_TRUE(alsa.stop());
-    ASSERT_TRUE(alsa.close());
+TEST(ALSAManualSignalTest, ConstantInputDoesNotCountAsCapturedAudio) {
+    alsa_manual::Clip clip(4800);
+    for(auto& channel:clip.samples)std::fill(channel.begin(),channel.end(),0.25f);
+    clip.recorded=clip.capacity;
+    clip.removeDC();
+    EXPECT_FLOAT_EQ(clip.level().peak,0.0f);
+    EXPECT_DOUBLE_EQ(clip.level().rms,0.0);
 }
 
-namespace {
-    std::vector<std::vector<float> > g_recordedSamples;
-    std::atomic<std::size_t> g_recordedFrames{0};
-    std::size_t g_recordCapacityFrames = 0;
-
-    void recordCallback(void *, const mka::audio::core::AudioProcessContext &ctx) noexcept {
-        const std::size_t framesLeft = g_recordCapacityFrames - g_recordedFrames.load();
-        const std::size_t framesToCopy = std::min<std::size_t>(framesLeft, ctx.frames);
-
-        const std::size_t writeOffset = g_recordedFrames.load();
-        for (std::uint32_t ch = 0; ch < ctx.input.count && ch < g_recordedSamples.size(); ++ch) {
-            for (std::size_t i = 0; i < framesToCopy; ++i) {
-                g_recordedSamples[ch][writeOffset + i] = ctx.input.channels[ch][i];
-            }
-        }
-
-        g_recordedFrames.fetch_add(framesToCopy);
-    }
-
-    std::atomic<std::size_t> g_playbackFrames{0};
-
-    void playbackCallback(void *, const mka::audio::core::AudioProcessContext &ctx) noexcept {
-        const std::size_t framesLeft = g_recordCapacityFrames - g_playbackFrames.load();
-        const std::size_t framesToCopy = std::min<std::size_t>(framesLeft, ctx.frames);
-
-        const std::size_t readOffset = g_playbackFrames.load();
-        for (std::uint32_t ch = 0; ch < ctx.output.count; ++ch) {
-            const std::uint32_t srcCh = ch < g_recordedSamples.size() ? ch : 0;
-            for (std::size_t i = 0; i < framesToCopy; ++i) {
-                ctx.output.channels[ch][i] = g_recordedSamples[srcCh][readOffset + i];
-            }
-            for (std::size_t i = framesToCopy; i < ctx.frames; ++i) {
-                ctx.output.channels[ch][i] = 0.0f; // silence une fois l'enregistrement épuisé
-            }
-        }
-
-        g_playbackFrames.fetch_add(framesToCopy);
-    }
+TEST(ALSAManualSignalTest, QuietSingleChannelIsAmplifiedAndReplayedOnBothSpeakers) {
+    alsa_manual::Clip clip(4800);
+    for(std::size_t i=0;i<clip.capacity;++i)
+        clip.samples[1][i]=static_cast<float>(0.01*std::sin(2*std::numbers::pi*440*i/alsa_manual::rate));
+    clip.recorded=clip.capacity;
+    clip.removeDC();
+    EXPECT_GT(clip.level().rms,0.004);
+    EXPECT_FLOAT_EQ(clip.prepareReplay(),32.0f);
+    EXPECT_EQ(clip.samples[0],clip.samples[1]);
+    EXPECT_GT(clip.level().peak,0.31f);
+    EXPECT_FLOAT_EQ(clip.samples[0].front(),0.0f);
+    EXPECT_FLOAT_EQ(clip.samples[0].back(),0.0f);
 }
 
-/*
- * record 5s
- * Wait 3s
- * play recording
- */
-TEST_F(ALSABackendHwTest, DISABLED_TestRecordAndPlayback) {
-    constexpr mka::audio::core::SampleRate sampleRate = 48000;
-    constexpr std::uint32_t channels = 2;
-    constexpr int recordSeconds = 5;
-
-    g_recordCapacityFrames = static_cast<std::size_t>(sampleRate) * recordSeconds;
-    g_recordedSamples.assign(channels, std::vector<float>(g_recordCapacityFrames, 0.0f));
-    g_recordedFrames.store(0);
-    g_playbackFrames.store(0);
-
-    // --- Phase 1 : recording ---
+TEST(ALSAManualTest, DISABLED_TestRecordAndPlayback) {
+    alsa_manual::Clip clip;
+    std::println("Enregistrement pendant 5 secondes : parlez dans le microphone maintenant.");
+    std::fflush(stdout);
     {
         mka::audio::core::ALSA recorder;
-        const mka::audio::core::EndpointConfig recordConfig{
-            .id = "hw:2,0",
-            .direction = mka::audio::core::Direction::Input,
-            .inputChannels = channels,
-            .outputChannels = 0,
-            .sampleRate = sampleRate,
-            .format = mka::audio::core::Format::Int32,
-            .bufferSize = 512,
-        };
-
-        ASSERT_TRUE(recorder.setProcessFunction(recordCallback));
-        ASSERT_TRUE(recorder.open(recordConfig));
+        ASSERT_TRUE(recorder.setProcessFunction(+[](void* user,const mka::audio::core::AudioProcessContext& ctx) noexcept {
+            static_cast<alsa_manual::Clip*>(user)->record(ctx);
+        },&clip));
+        ASSERT_TRUE(alsa_manual::open(recorder,alsa_manual::config<mka::audio::core::EndpointConfig>(true)));
         ASSERT_TRUE(recorder.start());
-
-        while (g_recordedFrames.load() < g_recordCapacityFrames) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-
-        ASSERT_TRUE(recorder.stop());
-        ASSERT_TRUE(recorder.close());
+        const bool complete=alsa_manual::wait(recorder,[&]{return clip.recorded.load()>=clip.capacity;},std::chrono::seconds(12));
+        const auto status=recorder.status();
+        ASSERT_TRUE(recorder.stop());ASSERT_TRUE(recorder.close());
+        std::println("Capture: {} frames, {} xruns, echec={}",clip.recorded.load(),status.xruns,status.failed);
+        ASSERT_TRUE(complete)<<"Pas de progression de capture : delai depasse, fin du test plutot qu'une attente infinie.";
+        ASSERT_FALSE(status.failed);
     }
-
-    // --- Wait ---
-    std::this_thread::sleep_for(std::chrono::seconds(3));
-
-    // --- Phase 2 : playback ---
+    clip.removeDC();
+    const auto level=clip.level();
+    std::println("Signal capture (sans composante continue): crete={:.8f}, RMS={:.8f} ({:.1f} dBFS)",
+        level.peak,level.rms,20*std::log10(std::max(level.rms,1e-12)));
+    const char* capturePath=std::getenv("MKA_TEST_ALSA_CAPTURE_WAV");
+    if(!capturePath || !*capturePath)capturePath="mka-alsa-capture.wav";
+    ASSERT_TRUE(clip.saveWav(capturePath))<<"Impossible d'ecrire le WAV : "<<capturePath;
+    std::println("Capture avant amplification sauvegardee : {}",capturePath);
+    ASSERT_GT(level.peak,0.001f)
+        <<"Capture silencieuse ou trop faible. Verifier le PCM d'entree, Capture/Mic mute et le gain avec alsamixer/amixer.";
+    ASSERT_GT(level.rms,0.0001)
+        <<"Energie capturee insuffisante (moins de -80 dBFS) : parler pendant la capture et verifier le micro selectionne.";
+    const auto gain=clip.prepareReplay();
+    std::println("Relecture du canal micro le plus fort sur les deux sorties, gain x{:.2f}",gain);
+    std::println("Lecture de la capture dans 1 seconde...");
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     {
         mka::audio::core::ALSA player;
-        const mka::audio::core::EndpointConfig playbackConfig{
-            .id = "hw:1,0",
-            .direction = mka::audio::core::Direction::Output,
-            .inputChannels = 0,
-            .outputChannels = channels,
-            .sampleRate = sampleRate,
-            .format = mka::audio::core::Format::Int32,
-            .bufferSize = 512,
-        };
-
-        ASSERT_TRUE(player.setProcessFunction(playbackCallback));
-        ASSERT_TRUE(player.open(playbackConfig));
+        ASSERT_TRUE(player.setProcessFunction(+[](void* user,const mka::audio::core::AudioProcessContext& ctx) noexcept {
+            static_cast<alsa_manual::Clip*>(user)->play(ctx);
+        },&clip));
+        ASSERT_TRUE(alsa_manual::open(player,alsa_manual::config<mka::audio::core::EndpointConfig>(false)));
         ASSERT_TRUE(player.start());
-
-        while (g_playbackFrames.load() < g_recordCapacityFrames) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-
-        ASSERT_TRUE(player.stop());
-        ASSERT_TRUE(player.close());
+        const bool complete=alsa_manual::wait(player,[&]{return clip.played.load()>=clip.lead+clip.capacity+clip.tail;},std::chrono::seconds(12));
+        const auto status=player.status();
+        ASSERT_TRUE(player.stop());ASSERT_TRUE(player.close());
+        std::println("Lecture: {} frames, {} xruns, echec={}",clip.played.load(),status.xruns,status.failed);
+        ASSERT_TRUE(complete)<<"La relecture n'a pas progresse jusqu'au bout.";
+        EXPECT_FALSE(status.failed);
     }
 }
 
