@@ -8,6 +8,34 @@ concurrency:
   group: optional-studies-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  macos-control-diagnostics:
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          brew install llvm ninja cmake
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> "$GITHUB_ENV"
+      - run: cmake --preset asan -B build/studies -DMKA_BUILD_STUDIES=ON
+      - run: cmake --build build/studies --parallel 2
+      - run: ctest --test-dir build/studies -L study --no-tests=error --output-on-failure --output-junit "$PWD/junit-studies-macos.xml"
+        env:
+          GTEST_OUTPUT: xml:${{ github.workspace }}/gtest-observations/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: studies-macos-control
+          path: |
+            junit-studies-macos.xml
+            build/studies/studies/details-example.jsonl
+            gtest-observations/
   linux-duplex:
     strategy:
       fail-fast: false
@@ -27,11 +55,16 @@ jobs:
       - run: cmake --build build/studies --parallel 2
       - shell: bash
         run: bash test/linux/run_virtual_tests.sh ctest --test-dir build/studies -L study --no-tests=error --output-on-failure --output-junit "$PWD/junit-studies-linux.xml"
+        env:
+          GTEST_OUTPUT: xml:${{ github.workspace }}/gtest-observations/
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: studies-linux-${{ matrix.sanitizer }}
-          path: junit-studies-linux.xml
+          path: |
+            junit-studies-linux.xml
+            build/studies/studies/details-example.jsonl
+            gtest-observations/
   windows-sdk:
     strategy:
       fail-fast: false
@@ -53,8 +86,13 @@ jobs:
         run: cmake --preset windows-core -B build/studies -DMKA_SANITIZER=${{ matrix.sanitizer }} -DMKA_BUILD_STUDIES=ON -DMKA_STUDY_ASIO=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
       - run: cmake --build build/studies --parallel 2
       - run: ctest --test-dir build/studies -L study --no-tests=error --output-on-failure --output-junit "${{ github.workspace }}/junit-studies-windows.xml"
+        env:
+          GTEST_OUTPUT: xml:${{ github.workspace }}/gtest-observations/
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: studies-windows-${{ matrix.sanitizer }}
-          path: junit-studies-windows.xml
+          path: |
+            junit-studies-windows.xml
+            build/studies/studies/details-example.jsonl
+            gtest-observations/

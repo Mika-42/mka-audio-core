@@ -48,3 +48,15 @@ if(WIN32)
         PROPERTIES LABELS "integration\\;study\\;hardware" TIMEOUT 30
         TEST_FILTER "LegacyHardware.*" TEST_LIST mka_legacy_hardware)
 endif()
+
+add_executable(mka-study-details-tests diagnostics/test_details.cpp)
+target_link_libraries(mka-study-details-tests PRIVATE mka-core-audio GTest::gtest_main)
+gtest_discover_tests(mka-study-details-tests TEST_PREFIX "study.details."
+    PROPERTIES LABELS "unit\\;study\\;nonrt" TIMEOUT 30)
+add_executable(mka-study-details-example diagnostics/example.cpp)
+target_link_libraries(mka-study-details-example PRIVATE mka-core-audio)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME study.details.json COMMAND "${Python3_EXECUTABLE}"
+    "${PROJECT_SOURCE_DIR}/ci/check_details_study.py" --binary "$<TARGET_FILE:mka-study-details-example>"
+    --output "${CMAKE_CURRENT_BINARY_DIR}/details-example.jsonl")
+set_tests_properties(study.details.json PROPERTIES LABELS "unit;study;nonrt" TIMEOUT 30)

@@ -23,6 +23,9 @@ Linux support covers the documented functionality of each backend. The
 duplex constraints. Windows and macOS already have implementations and CI checks;
 complete operational validation on those platforms remains pending.
 
+The [optional studies](docs/studies/README.md) cover ASIO/legacy Windows APIs,
+paired Linux streams, format fuzzing and control-side structured diagnostics.
+
 ---
 
 ## Goals
