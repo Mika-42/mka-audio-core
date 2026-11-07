@@ -43,13 +43,19 @@ jobs:
       - run: cmake --preset core -B build/windows-mingw15 -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON
       - run: cmake --build build/windows-mingw15 --parallel 2
       - run: ctest --test-dir build/windows-mingw15 -L unit --no-tests=error --output-on-failure --parallel 2 --output-junit "$PWD/junit-windows-mingw15.xml"
+      - name: Configure optimized MinGW module consumer
+        run: cmake --preset core -B build/windows-mingw15-release -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build/windows-mingw15-release --parallel 2
+      - run: ctest --test-dir build/windows-mingw15-release -L unit --no-tests=error --output-on-failure --parallel 2 --output-junit "$PWD/junit-windows-mingw15-release.xml"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: windows-mingw15-tests
           path: |
             junit-windows-mingw15.xml
+            junit-windows-mingw15-release.xml
             build/windows-mingw15/Testing/Temporary/LastTest.log
+            build/windows-mingw15-release/Testing/Temporary/LastTest.log
 
   windows-core:
     runs-on: windows-2022
