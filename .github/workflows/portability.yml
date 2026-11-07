@@ -53,3 +53,21 @@ jobs:
         with:
           name: client-${{ matrix.os }}
           path: build/client-*/client-results.xml
+
+  configuration-fuzz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CXX: clang++-19
+      CXXFLAGS: --gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-build
+      - run: cmake --preset asan -B build/fuzz -DMKA_BUILD_TESTS=OFF -DMKA_BUILD_FUZZERS=ON
+      - run: cmake --build build/fuzz --parallel 2
+      - run: python3 ci/run_config_fuzz.py --binary build/fuzz/mka-audio-config-fuzz --work build/fuzz/corpus --runs 100000
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: configuration-fuzz-reproducer
+          path: build/fuzz/corpus/
