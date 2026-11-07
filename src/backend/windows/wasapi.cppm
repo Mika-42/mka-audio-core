@@ -14,7 +14,11 @@ public:
 protected:
     std::vector<Endpoint> getEndPoints_() const override {
         if (FAILED(control_.initialization())) return {};
-        return control_.invoke([] { return std::vector<Endpoint>{}; });
+        // Keep module-owned endpoints outside std::future's return storage on
+        // GCC 15. invoke() waits for completion before this local can be returned.
+        std::vector<Endpoint> endpoints;
+        control_.invoke([&endpoints] { endpoints.clear(); });
+        return endpoints;
     }
     Result open_(const EndpointConfig&) override {
         if (FAILED(control_.initialization())) return std::unexpected{ErrorType::ConfigurationFailed};
