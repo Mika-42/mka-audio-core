@@ -1,6 +1,27 @@
 #include <gtest/gtest.h>
 #include "fake_devices.hpp"
 using namespace wasapi_test;
+TEST(ComMocks, QueriesPreserveCanonicalIdentityAndOwnReferencesUntilTheFinalRelease) {
+    EXPECT_EQ(liveObjects.load(), 0);
+    auto device = makeFake<FakeDevice>();
+    EXPECT_EQ(device->QueryInterface(__uuidof(IUnknown), nullptr), E_POINTER);
+    void* unsupported = device.Get();
+    EXPECT_EQ(device->QueryInterface(__uuidof(IPropertyStore), &unsupported), E_NOINTERFACE);
+    EXPECT_EQ(unsupported, nullptr);
+    ComPtr<IMMEndpoint> endpoint;
+    ASSERT_EQ(device.As(&endpoint), S_OK);
+    ComPtr<IUnknown> deviceIdentity, endpointIdentity;
+    ASSERT_EQ(device.As(&deviceIdentity), S_OK);
+    ASSERT_EQ(endpoint.As(&endpointIdentity), S_OK);
+    EXPECT_EQ(deviceIdentity.Get(), endpointIdentity.Get());
+    device.Reset();
+    endpoint.Reset();
+    EXPECT_EQ(liveObjects.load(), 1);
+    deviceIdentity.Reset();
+    EXPECT_EQ(liveObjects.load(), 1);
+    endpointIdentity.Reset();
+    EXPECT_EQ(liveObjects.load(), 0);
+}
 TEST_F(DevicesFixture, EnumeratesOnlyActiveNativeRenderAndCaptureIdsOnTheComOwner) {
     add(L"output:\u00e9", eRender); add(L"capture",eCapture);
     auto disabled=add(L"disabled",eRender);disabled->state=DEVICE_STATE_DISABLED;
