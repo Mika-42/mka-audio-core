@@ -2,6 +2,7 @@
 #include "../../src/backend/windows/detail/wasapi_format.hpp"
 #include "fake_com.hpp"
 #include <atomic>
+#include "fake_render.hpp"
 #include <cstring>
 namespace wasapi_test {
 inline std::atomic<int> liveClients{0};
@@ -12,7 +13,9 @@ public:
     WAVEFORMATEXTENSIBLE requested{};
     AUDCLNT_SHAREMODE requestedMode=AUDCLNT_SHAREMODE_EXCLUSIVE;
     unsigned supportCalls=0, initializeCalls=0;
-    HRESULT initializeResult=S_OK, bufferSizeResult=S_OK;
+    HRESULT initializeResult=S_OK, bufferSizeResult=S_OK, eventResult=S_OK, renderServiceResult=S_OK;
+    HANDLE audioEvent=nullptr;unsigned eventCalls=0, renderServiceCalls=0;
+    Microsoft::WRL::ComPtr<FakeRender> render=makeFake<FakeRender>();
     UINT32 bufferFrames=480;
     AUDCLNT_SHAREMODE initializedMode=AUDCLNT_SHAREMODE_EXCLUSIVE;
     DWORD initializedFlags=0;REFERENCE_TIME duration=0,periodicity=-1;
@@ -47,7 +50,11 @@ public:
     HRESULT STDMETHODCALLTYPE Start() override { return E_NOTIMPL; }
     HRESULT STDMETHODCALLTYPE Stop() override { return E_NOTIMPL; }
     HRESULT STDMETHODCALLTYPE Reset() override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE SetEventHandle(HANDLE) override { return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE GetService(REFIID, void**) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE SetEventHandle(HANDLE event) override { ++eventCalls;audioEvent=event;return eventResult; }
+    HRESULT STDMETHODCALLTYPE GetService(REFIID iid, void** out) override {
+        *out=nullptr;
+        if (iid==__uuidof(IAudioRenderClient)) { ++renderServiceCalls;if (FAILED(renderServiceResult)) return renderServiceResult;return render->QueryInterface(iid,out); }
+        return E_NOINTERFACE;
+    }
 };
 }
