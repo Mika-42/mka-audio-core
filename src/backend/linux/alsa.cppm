@@ -9,7 +9,7 @@
 //      sont traités comme des xruns.
 //  B3  duplex : capture et lecture sont liées (snd_pcm_link) et démarrées ensemble ;
 //      on attend d'avoir UNE période complète des deux côtés avant d'appeler le
-//      callback (plus aucune frame perdue) ; nombre de périodes fixé ; sw_params
+//      callback (plus aucune frame perdue) ; périodes entières négociées ; sw_params
 //      (avail_min = période, démarrage manuel) ; préremplissage de la lecture.
 //  B4  conversions de format dans mka.audio.convert (Int24 correct, saturation,
 //      arrondi, plus de reinterpret_cast).
@@ -181,9 +181,9 @@ export namespace mka::audio::core {
         // Types et constantes
         // ---------------------------------------------------------------------
 
-        // Nombre de périodes du buffer ALSA (>= 2 requis ; 3 laisse de la marge
-        // au thread audio pour un jitter d'ordonnancement).
-        static constexpr unsigned kPeriods = 3;
+        // Préférence interne, pas une contrainte de l'API : acp63 impose 4
+        // périodes, d'autres périphériques n'en acceptent que 2.
+        static constexpr unsigned kPreferredPeriods = 3;
         // Timeout de snd_pcm_wait : borne aussi la latence de réaction à stop().
         static constexpr int kWaitTimeoutMs = 50;
         // Échecs de récupération consécutifs avant d'abandonner le flux.
@@ -444,8 +444,18 @@ export namespace mka::audio::core {
                 return fail(ErrorType::BufferSizeNotSupported);
             }
 
-            int dir = 0;
-            if (snd_pcm_hw_params_set_periods(pcm, hw, kPeriods, 0) < 0) {
+            // La taille du callback reste exacte. Seul le nombre de périodes
+            // de l'anneau natif s'adapte aux contraintes du périphérique.
+            unsigned minPeriods = 2;
+            unsigned periods = kPreferredPeriods;
+            int periodsDir = 0;
+            if (snd_pcm_hw_params_set_periods_integer(pcm, hw) < 0
+                || snd_pcm_hw_params_set_periods_min(pcm, hw, &minPeriods, &periodsDir) < 0) {
+                return fail(ErrorType::BufferSizeNotSupported);
+            }
+            periodsDir = 0;
+            if (snd_pcm_hw_params_set_periods_near(pcm, hw, &periods, &periodsDir) < 0
+                || periods < 2 || periodsDir != 0) {
                 return fail(ErrorType::BufferSizeNotSupported);
             }
 
@@ -467,16 +477,17 @@ export namespace mka::audio::core {
             snd_pcm_uframes_t period = 0;
             snd_pcm_uframes_t buffer = 0;
             unsigned actualPeriods = 0;
+            int dir = 0;
             int periodsDirection = 0;
             if (snd_pcm_hw_params_get_period_size(hw, &period, &dir) < 0
                 || snd_pcm_hw_params_get_buffer_size(hw, &buffer) < 0
                 || snd_pcm_hw_params_get_periods(hw, &actualPeriods, &periodsDirection) < 0)
                 return fail(ErrorType::ConfigurationFailed);
-            // No nearest-period or fractional ring fallback. Division checks the
-            // native frame width without overflowing a period * periods product.
+            // La période demandée ne doit jamais être arrondie. Vérifier aussi
+            // que l'anneau contient exactement le nombre entier négocié.
             if (period == 0 || period != cfg.bufferSize || dir != 0
-                || actualPeriods != kPeriods || periodsDirection != 0
-                || buffer / period != kPeriods || buffer % period != 0)
+                || actualPeriods != periods || periodsDirection != 0
+                || buffer / period != periods || buffer % period != 0)
                 return fail(ErrorType::BufferSizeNotSupported);
 
             // sw_params : réveil à chaque période, démarrage uniquement manuel
