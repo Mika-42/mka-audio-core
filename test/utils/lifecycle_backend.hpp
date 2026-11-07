@@ -9,8 +9,10 @@
 #include <thread>
 #include <vector>
 
-// Include after importing mka.audio.backend.abstract. A resource-owning core
-// fixture, with a real processing worker and the production event dispatcher.
+// Include <chrono> and <thread> before importing mka.audio.backend.abstract,
+// then include this fixture. GCC must see those headers before their module use.
+// A resource-owning core fixture, with a real processing worker and the
+// production event dispatcher.
 namespace lifecycle_test {
 using namespace mka::audio::core;
 
