@@ -82,12 +82,19 @@ public:
             pendingEvent = UniqueEvent(events_.create(nullptr,FALSE,FALSE,nullptr),events_.close);
             if (!pendingEvent.get()) return lastEventError();
             if (FAILED(result = client->SetEventHandle(pendingEvent.get()))) return result;
+            ComPtr<IAudioCaptureClient> capture;
+            if (pending.flow == eCapture) {
+                if (FAILED(result = client->GetService(__uuidof(IAudioCaptureClient),
+                    reinterpret_cast<void**>(capture.GetAddressOf())))) return result;
+                if (!capture) return E_POINTER;
+            }
             ComPtr<IAudioRenderClient> render;
             if (pending.flow == eRender) {
                 if (FAILED(result = client->GetService(__uuidof(IAudioRenderClient),
                     reinterpret_cast<void**>(render.GetAddressOf())))) return result;
                 if (!render) return E_POINTER;
             }
+            capture_ = std::move(capture);
             render_ = std::move(render);
             audioEvent_ = std::move(pendingEvent);
             capacity_ = capacity;
@@ -100,10 +107,33 @@ public:
     HRESULT close() {
         if (FAILED(control_.initialization())) return control_.initialization();
         return control_.invoke([&]() -> HRESULT {
-            render_.Reset(); client_.Reset(); device_.Reset(); audioEvent_.reset();
+            capture_.Reset(); render_.Reset(); client_.Reset(); device_.Reset(); audioEvent_.reset();
             request_ = {}; format_ = {}; capacity_ = 0;
             return S_OK;
         });
+    }
+    using CapturePacket = void (*)(void*, const BYTE*, std::uint32_t, DWORD) noexcept;
+    // Called only by the processing owner. No queue, allocation, wait or lock.
+    HRESULT captureOnce(CapturePacket process, void* user) noexcept {
+        if (!capture_) return E_UNEXPECTED;
+        UINT32 pending = 0;
+        HRESULT result = capture_->GetNextPacketSize(&pending);
+        if (FAILED(result)) return result;
+        if (!pending) return S_FALSE;
+        if (pending > capacity_) return E_UNEXPECTED;
+        BYTE* bytes = nullptr; UINT32 frames = 0; DWORD flags = 0;
+        result = capture_->GetBuffer(&bytes,&frames,&flags,nullptr,nullptr);
+        if (result == AUDCLNT_S_BUFFER_EMPTY) return S_FALSE;
+        if (FAILED(result)) return result;
+        constexpr DWORD known = AUDCLNT_BUFFERFLAGS_SILENT | AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY
+            | AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR;
+        HRESULT status = S_OK;
+        if (frames > capacity_ || (flags & ~known)) status = E_UNEXPECTED;
+        else if (!frames) status = S_FALSE;
+        else if (!bytes && !(flags & AUDCLNT_BUFFERFLAGS_SILENT)) status = E_POINTER;
+        else if (process) process(user,bytes,frames,flags);
+        const auto released = capture_->ReleaseBuffer(frames);
+        return FAILED(released) ? released : status;
     }
     HANDLE audioEvent() const noexcept { return audioEvent_.get(); }
     std::uint32_t capacity() const noexcept { return capacity_; }
@@ -115,6 +145,7 @@ private:
     ComPtr<IMMDevice> device_;
     ComPtr<IAudioClient> client_;
     ComPtr<IAudioRenderClient> render_;
+    ComPtr<IAudioCaptureClient> capture_;
     Request request_;
     WAVEFORMATEXTENSIBLE format_{};
     std::uint32_t capacity_ = 0;
