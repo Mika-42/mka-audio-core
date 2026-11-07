@@ -15,6 +15,7 @@ static_assert(std::atomic<bool>::is_always_lock_free && std::atomic<unsigned>::i
 struct ProcessState {
     std::atomic<bool> accepting{false},failed{false},invalidated{false};
     std::atomic<unsigned> active{0};
+    std::atomic_flag processing=ATOMIC_FLAG_INIT;
     UInt32 inputs=0,outputs=0,capacity=0;
     Callbacks callbacks;
     std::vector<std::vector<float>> input,output;
@@ -108,8 +109,16 @@ inline OSStatus ioProc(AudioObjectID,const AudioTimeStamp*,const AudioBufferList
     const AudioTimeStamp*,AudioBufferList* output,const AudioTimeStamp*,void* user) noexcept {
     auto& state=*static_cast<ProcessState*>(user);
     state.active.fetch_add(1,std::memory_order_acq_rel);
-    if(state.accepting.load(std::memory_order_acquire) && !state.failed.load(std::memory_order_acquire))state.process(input,output);
-    else ProcessState::silence(output);
+    if(state.accepting.load(std::memory_order_acquire) && !state.failed.load(std::memory_order_acquire)){
+        if(state.invalidated.load(std::memory_order_acquire)){
+            state.fail();ProcessState::silence(output);
+        }else if(!state.processing.test_and_set(std::memory_order_acquire)){
+            state.process(input,output);state.processing.clear(std::memory_order_release);
+        }else{
+            ProcessState::silence(output);
+            if(state.callbacks.xrun)state.callbacks.xrun(state.callbacks.user);
+        }
+    }else ProcessState::silence(output);
     state.active.fetch_sub(1,std::memory_order_release);
     return noErr;
 }

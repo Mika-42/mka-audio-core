@@ -5,6 +5,7 @@
 namespace mka_coreaudio_detail {
 // Private SDK boundary; no Apple type is exported by the module facade.
 struct Api {
+    decltype(&AudioObjectHasProperty) has=&AudioObjectHasProperty;
     decltype(&AudioObjectGetPropertyDataSize) size=&AudioObjectGetPropertyDataSize;
     decltype(&AudioObjectGetPropertyData) get=&AudioObjectGetPropertyData;
     decltype(&AudioObjectSetPropertyData) set=&AudioObjectSetPropertyData;
