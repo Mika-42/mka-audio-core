@@ -1,5 +1,7 @@
 #pragma once
 #include "devices.hpp"
+#include "process.hpp"
+#include <memory>
 #include <expected>
 #include <chrono>
 #include <thread>
@@ -47,11 +49,18 @@ public:
             if(!caps)return std::unexpected{Failure::Format};
             if(caps->channels!=(input?config.inputs:config.outputs))return std::unexpected{Failure::Channels};
         }
+        state_=std::make_unique<ProcessState>();
+        state_->allocate(config.inputs,config.outputs,config.frames);
+        if(api_.create(device_,&ioProc,state_.get(),&proc_)!=noErr || !proc_)return std::unexpected{Failure::Configuration};
         opened_=true;rollback.committed=true;
         return {};
     }
     Result close() noexcept {
-        restore();opened_=false;device_=kAudioObjectUnknown;return {};
+        if(proc_){
+            if(api_.destroy(device_,proc_)!=noErr)return std::unexpected{Failure::Configuration};
+            proc_=nullptr;
+        }
+        state_.reset();restore();opened_=false;device_=kAudioObjectUnknown;return {};
     }
 private:
     template<class T>
@@ -101,6 +110,8 @@ private:
     }
     std::optional<Float64> oldRate_;
     std::optional<UInt32> oldFrames_;
+    std::unique_ptr<ProcessState> state_;
+    AudioDeviceIOProcID proc_=nullptr;
     const Api& api_;
     Config config_;
     AudioObjectID device_=kAudioObjectUnknown;
