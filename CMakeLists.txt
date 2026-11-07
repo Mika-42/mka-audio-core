@@ -34,6 +34,11 @@ option(MKA_BUILD_PULSEAUDIO
         ${LINUX}
 )
 
+option(MKA_BUILD_COREAUDIO "Build the macOS CoreAudio backend" ${APPLE})
+if(MKA_BUILD_COREAUDIO AND NOT APPLE)
+    message(FATAL_ERROR "MKA_BUILD_COREAUDIO requires a macOS target and Apple SDK")
+endif()
+
 option(MKA_BUILD_WASAPI "Build the Windows WASAPI backend" ${WIN32})
 if(MKA_BUILD_WASAPI AND NOT WIN32)
     message(FATAL_ERROR "MKA_BUILD_WASAPI requires a Windows target and Windows SDK")
@@ -501,6 +506,25 @@ if(MKA_BUILD_WASAPI)
             target_sources(mka-audio-wasapi-tests PRIVATE test/windows/rt_alloc.cpp test/windows/test_rt.cpp)
         endif()
         gtest_discover_tests(mka-audio-wasapi-tests TEST_PREFIX "wasapi.")
+    endif()
+endif()
+
+if(MKA_BUILD_COREAUDIO)
+    find_library(MKA_COREAUDIO_FRAMEWORK CoreAudio REQUIRED)
+    find_library(MKA_COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    add_library(mka-audio-coreaudio)
+    target_sources(mka-audio-coreaudio PUBLIC FILE_SET CXX_MODULES BASE_DIRS src FILES
+        src/backend/macos/coreaudio.cppm src/backend/macos/coreaudio_compat.cppm)
+    target_link_libraries(mka-audio-coreaudio PRIVATE mka-core-audio
+        ${MKA_COREAUDIO_FRAMEWORK} ${MKA_COREFOUNDATION_FRAMEWORK})
+    target_compile_features(mka-audio-coreaudio PUBLIC cxx_std_${MKA_CXX_STANDARD})
+    if(MKA_BUILD_TESTS)
+        target_compile_definitions(mka-audio-coreaudio PRIVATE MKA_COREAUDIO_TESTING=1)
+        add_executable(mka-audio-coreaudio-tests test/macos/test_coreaudio.cpp)
+        target_compile_definitions(mka-audio-coreaudio-tests PRIVATE MKA_COREAUDIO_TESTING=1)
+        target_link_libraries(mka-audio-coreaudio-tests PRIVATE mka-audio-coreaudio GTest::gtest_main
+            ${MKA_COREAUDIO_FRAMEWORK} ${MKA_COREFOUNDATION_FRAMEWORK})
+        gtest_discover_tests(mka-audio-coreaudio-tests TEST_PREFIX "coreaudio.")
     endif()
 endif()
 

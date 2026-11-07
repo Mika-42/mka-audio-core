@@ -1,5 +1,19 @@
-//
-// Created by mika on 9/24/26.
-//
+module;
+#include <expected>
+#include <vector>
+#include "detail/native.hpp"
+export module mka.audio.backend.coreaudio;
+export import mka.audio.backend.abstract;
 
-export module coreaudio;
+export namespace mka::audio::core {
+class CoreAudio final : public Backend {
+public:
+    ~CoreAudio() override { stopDispatcher(); (void)stop(); (void)close(); }
+protected:
+    std::vector<Endpoint> getEndPoints_() const override { return {}; }
+    Result open_(const EndpointConfig&) override { return std::unexpected{ErrorType::ConfigurationFailed}; }
+    Result start_() override { return std::unexpected{ErrorType::ConfigurationFailed}; }
+    Result stop_() override { return {}; }
+    Result close_() override { return {}; }
+};
+}
