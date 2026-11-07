@@ -8,6 +8,30 @@ concurrency:
   group: optional-studies-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  linux-duplex:
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [none, address-undefined]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CXX: clang++-19
+      CXXFLAGS: --gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-build
+        with:
+          native: 'true'
+      - run: cmake --preset core -B build/studies -DMKA_BUILD_STUDIES=ON -DMKA_BUILD_PIPEWIRE=ON -DMKA_BUILD_PULSEAUDIO=ON -DMKA_SANITIZER=${{ matrix.sanitizer }}
+      - run: cmake --build build/studies --parallel 2
+      - shell: bash
+        run: bash test/linux/run_virtual_tests.sh ctest --test-dir build/studies -L study --no-tests=error --output-on-failure --output-junit "$PWD/junit-studies-linux.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: studies-linux-${{ matrix.sanitizer }}
+          path: junit-studies-linux.xml
   windows-sdk:
     strategy:
       fail-fast: false
