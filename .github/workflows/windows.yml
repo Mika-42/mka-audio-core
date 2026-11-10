@@ -134,7 +134,8 @@ jobs:
         with:
           arch: x64
       - run: python -m pip install 'cmake>=4.0,<5' ninja
-      - run: cmake --preset windows-wasapi-asan
+      - run: python ci/fetch_asio_sdk.py --destination build/asio-sdk
+      - run: cmake --preset windows-wasapi-asan -DMKA_BUILD_ASIO=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
       - run: cmake --build --preset windows-wasapi-asan --parallel 2
       - name: Verify instrumentation and an isolated negative runtime witness
         run: ./ci/verify_msvc_asan.ps1
