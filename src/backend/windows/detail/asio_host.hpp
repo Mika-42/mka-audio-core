@@ -10,31 +10,21 @@
 #include "asio_driver.hpp"
 
 namespace mka_asio_detail {
-enum class Failure { none, endpoint, format, channels, rate, buffer, configuration };
-enum class Flow { input, output, duplex };
-enum class Sample { i16, i24, i32, f32, f64 };
-struct Request {
-    std::string id;
-    Flow flow;
-    std::uint32_t inputs, outputs, rate, frames;
-    Sample sample;
-};
-inline Failure failure(ASIOError error) noexcept {
-    switch (error) {
-        case ASE_OK: return Failure::none;
-        case ASE_NotPresent: case ASE_HWMalfunction: return Failure::endpoint;
-        case ASE_NoClock: return Failure::rate;
-        default: return Failure::configuration;
-    }
-}
-
 // Native adapters consume their state on close, including cleanup after an
 // error. No SDK type is exposed by the exported Backend interface.
-inline ASIOError nativeOpen(const Request& request, void** out) noexcept { return openDriver(request.id, out); }
+inline Failure nativeOpen(const Request& request, void** out) noexcept {
+    const auto result = failure(openDriver(request.id, out));
+    if (result != Failure::none) return result;
+    try {
+        std::lock_guard lock(driverOwnership);
+        return static_cast<Driver*>(*out)->validateChannels(request);
+    }
+    catch (...) { return Failure::configuration; }
+}
 inline ASIOError unavailableOperation(void*) noexcept { return ASE_NotPresent; }
 struct Api {
-    std::vector<Device> (*devices)() = nativeDevices;
-    ASIOError (*open)(const Request&, void**) noexcept = nativeOpen;
+    std::vector<Device> (*devices)() = nativeCapableDevices;
+    Failure (*open)(const Request&, void**) noexcept = nativeOpen;
     ASIOError (*start)(void*) noexcept = unavailableOperation;
     ASIOError (*stop)(void*) noexcept = unavailableOperation;
     ASIOError (*close)(void**) noexcept = closeDriver;
@@ -59,8 +49,7 @@ public:
     Failure open(const Request& request) noexcept {
         if (state_ || !api_.open || !api_.close) return Failure::configuration;
         void* pending = nullptr;
-        const auto error = api_.open(request, &pending);
-        const auto result = failure(error);
+        const auto result = api_.open(request, &pending);
         if (result != Failure::none || !pending) {
             if (pending) (void)api_.close(&pending);
             return result == Failure::none ? Failure::configuration : result;

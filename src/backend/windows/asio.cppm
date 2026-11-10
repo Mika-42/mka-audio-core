@@ -18,8 +18,14 @@ public:
 protected:
     std::vector<Endpoint> getEndPoints_() const override {
         std::vector<Endpoint> result;
-        for (auto& device : session_.devices())
-            result.push_back({std::move(device.id), std::move(device.name), std::nullopt, std::nullopt});
+        for (auto& device : session_.devices()) {
+            Endpoint endpoint{std::move(device.id), std::move(device.name), std::nullopt, std::nullopt};
+            if (device.channels) {
+                if (device.channels->inputs) endpoint.input = StreamCapabilities{1, device.channels->inputs, {}, {}, {}};
+                if (device.channels->outputs) endpoint.output = StreamCapabilities{1, device.channels->outputs, {}, {}, {}};
+            }
+            result.push_back(std::move(endpoint));
+        }
         return result;
     }
     Result open_(const EndpointConfig& config) override {

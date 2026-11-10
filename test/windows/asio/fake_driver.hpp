@@ -19,7 +19,7 @@ public:
     void getErrorMessage(char* text) override { std::memcpy(text, "init refused", 13); }
     ASIOError start() override { return ASE_InvalidMode; }
     ASIOError stop() override { return ASE_OK; }
-    ASIOError getChannels(long* input, long* output) override { *input = 2; *output = 2; return ASE_OK; }
+    ASIOError getChannels(long* input, long* output) override;
     ASIOError getLatencies(long* input, long* output) override { *input = 64; *output = 64; return ASE_OK; }
     ASIOError getBufferSize(long* min, long* max, long* preferred, long* granularity) override {
         *min = 64; *max = 1024; *preferred = 256; *granularity = -1; return ASE_OK;
@@ -45,6 +45,10 @@ struct DriverFixture {
     LoaderApi api;
     std::vector<Device> registrations{{driverId, "Test ASIO"}};
     HRESULT creation = S_OK, apartment = S_OK;
+    ASIOError channelsResult = ASE_OK;
+    long inputs = 2, outputs = 2;
+    unsigned channelQueries = 0;
+    DWORD channelThread = 0;
     bool acceptInit = true, nullInterface = false, partialFailure = false, sta = false, validWindow = false;
     unsigned live = 0, destroyed = 0, creates = 0, inits = 0, comAttempts = 0, comReferences = 0, uninitializes = 0;
     DWORD creationThread = 0, initThread = 0, releaseThread = 0, uninitializeThread = 0;
@@ -106,4 +110,8 @@ inline ASIOBool FakeDriver::init(void* window) {
     return owner_.acceptInit ? ASIOTrue : ASIOFalse;
 }
 inline void FakeDriver::getDriverName(char* name) { std::memcpy(name, "Test ASIO", 10); }
+inline ASIOError FakeDriver::getChannels(long* input, long* output) {
+    ++owner_.channelQueries; owner_.channelThread = GetCurrentThreadId();
+    *input = owner_.inputs; *output = owner_.outputs; return owner_.channelsResult;
+}
 }

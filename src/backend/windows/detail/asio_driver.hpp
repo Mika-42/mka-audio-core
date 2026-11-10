@@ -1,6 +1,7 @@
 #pragma once
 #include "asio_devices.hpp"
 #include "asio_control.hpp"
+#include "asio_types.hpp"
 #include <asiosys.h>
 #include <asio.h>
 #include <iasiodrv.h>
@@ -72,6 +73,28 @@ public:
             return ASE_OK;
         } catch (...) { return ASE_HWMalfunction; }
     }
+    Failure queryChannels() {
+        return control_.invoke([&] {
+            long inputs = -1, outputs = -1;
+            const auto error = driver_->getChannels(&inputs, &outputs);
+            if (error != ASE_OK) return failure(error);
+            static_assert(sizeof(long) == sizeof(std::int32_t));
+            if (inputs < 0 || outputs < 0) return Failure::channels;
+            channels_ = ChannelCounts{static_cast<std::uint32_t>(inputs), static_cast<std::uint32_t>(outputs)};
+            return Failure::none;
+        });
+    }
+    Failure validateChannels(const Request& request) {
+        if (const auto result = queryChannels(); result != Failure::none) return result;
+        const bool shape = request.flow == Flow::input ? request.inputs > 0 && request.outputs == 0
+            : request.flow == Flow::output ? request.inputs == 0 && request.outputs > 0
+            : request.flow == Flow::duplex && request.inputs > 0 && request.outputs > 0;
+        if (!shape || request.inputs > channels_->inputs || request.outputs > channels_->outputs)
+            return Failure::channels;
+        return Failure::none;
+    }
+    std::optional<ChannelCounts> channels() const noexcept { return channels_; }
+    std::string id;
     DWORD thread() const noexcept { return control_.thread(); }
     HWND window() const noexcept { return control_.window(); }
     const ASIODriverInfo& information() const noexcept { return info_; }
@@ -80,6 +103,7 @@ private:
     ControlThread control_;
     IASIO* driver_ = nullptr;
     ASIODriverInfo info_{};
+    std::optional<ChannelCounts> channels_;
 };
 
 inline std::mutex driverOwnership;
@@ -101,6 +125,7 @@ inline ASIOError openDriver(const std::string& requestedId, void** out) noexcept
         const auto devices = api.devices ? api.devices() : std::vector<Device>{};
         if (std::none_of(devices.begin(), devices.end(), [&](const auto& device) { return device.id == canonical; })) return ASE_NotPresent;
         auto pending = std::make_unique<Driver>(api);
+        pending->id = canonical;
         const auto error = pending->open(*clsid);
         if (error != ASE_OK) return error;
         activeDriver = pending.release();
@@ -118,5 +143,28 @@ inline ASIOError closeDriver(void** state) noexcept {
         std::unique_ptr<Driver> owned(std::exchange(activeDriver, nullptr));
         return owned->close();
     } catch (...) { return ASE_HWMalfunction; }
+}
+
+// Capability probes temporarily initialize a driver without starting audio.
+// While a session owns a driver, use its immutable cached counts and leave all
+// other registrations unprobed. The metadata-only registry scan stays separate.
+inline std::vector<Device> nativeCapableDevices() {
+    const auto api = loaderApi();
+    auto devices = api.devices ? api.devices() : std::vector<Device>{};
+    std::lock_guard lock(driverOwnership);
+    for (auto& device : devices) {
+        if (activeDriver) {
+            if (activeDriver->id == device.id) device.channels = activeDriver->channels();
+            continue;
+        }
+        try {
+            const auto clsid = driverClass(device.id);
+            if (!clsid) continue;
+            Driver probe(api);
+            if (probe.open(*clsid) == ASE_OK && probe.queryChannels() == Failure::none)
+                device.channels = probe.channels();
+        } catch (...) { device.channels.reset(); }
+    }
+    return devices;
 }
 }
