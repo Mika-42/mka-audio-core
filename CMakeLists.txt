@@ -526,6 +526,10 @@ if(MKA_BUILD_ASIO_SDK_TESTS)
         "-DSDK_ROOT=${mka_asio_sdk_root}" "-DWORK=${PROJECT_BINARY_DIR}/asio-sdk-validation"
         -P "${PROJECT_SOURCE_DIR}/test/cmake/asio_sdk.cmake")
     set_tests_properties(asio.sdk.ConfigurationValidation PROPERTIES LABELS "unit;asio;nonrt" TIMEOUT 30)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME asio.sdk.DownloadValidation COMMAND "${Python3_EXECUTABLE}"
+        "${PROJECT_SOURCE_DIR}/test/ci/test_fetch_asio_sdk.py")
+    set_tests_properties(asio.sdk.DownloadValidation PROPERTIES LABELS "unit;asio;nonrt" TIMEOUT 30)
 endif()
 
 if(MKA_BUILD_TESTS)
