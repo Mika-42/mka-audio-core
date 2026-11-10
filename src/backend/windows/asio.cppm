@@ -1,5 +1,7 @@
-//
-// Created by mika on 9/24/26.
-//
-
-export module asio;
+module;
+#include <expected>
+#include <vector>
+#include <asiosys.h>
+#include <asio.h>
+export module mka.audio.backend.asio;
+export import mka.audio.backend.abstract;

@@ -51,3 +51,21 @@ callbacks), Windows integer widths, borrowed Core buffers and both buffer
 indices. Configuration tests exercise valid, empty, absent, incomplete and
 modified SDKs, including changed license files. MSVC and MinGW/GCC 15.2 compile
 the real headers. This step loads no driver and claims no hardware result.
+
+## Optional backend target (S06-02)
+
+`MKA_BUILD_ASIO=ON` enables `mka-audio-asio` on Windows with the audited SDK.
+Import `mka.audio.backend.asio`; the original `asio` module re-exports it for
+compatibility. SDK include directories are private to the target. The Core and
+module consumers need no SDK include path. `MKA_BUILD_TESTS=OFF` builds only the
+libraries, without GoogleTest or the SDK validation executables.
+
+```powershell
+cmake --preset windows-core -B build/asio -DMKA_BUILD_ASIO=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
+cmake --build build/asio --parallel 2
+ctest --test-dir build/asio -L asio --output-on-failure
+```
+
+The target currently establishes module integration; the following cards add
+the ASIO class, driver access and processing. Enabling the target does not yet
+establish operational audio support. Linux/macOS requests fail explicitly.
