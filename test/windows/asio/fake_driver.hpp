@@ -101,7 +101,8 @@ inline ASIOBool FakeDriver::init(void* window) {
     owner_.validWindow = window && IsWindow(owner_.lastWindow)
         && GetWindowThreadProcessId(owner_.lastWindow, nullptr) == GetCurrentThreadId();
     APTTYPE type{}; APTTYPEQUALIFIER qualifier{};
-    owner_.sta = SUCCEEDED(CoGetApartmentType(&type, &qualifier)) && type == APTTYPE_STA;
+    owner_.sta = SUCCEEDED(CoGetApartmentType(&type, &qualifier))
+        && (type == APTTYPE_STA || type == APTTYPE_MAINSTA);
     return owner_.acceptInit ? ASIOTrue : ASIOFalse;
 }
 inline void FakeDriver::getDriverName(char* name) { std::memcpy(name, "Test ASIO", 10); }
