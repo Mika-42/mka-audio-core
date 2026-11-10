@@ -27,10 +27,11 @@ inline Failure nativeOpen(const Request& request, void** out) noexcept {
     catch (...) { return Failure::configuration; }
 }
 inline ASIOError unavailableOperation(void*) noexcept { return ASE_NotPresent; }
+inline ASIOError unavailableStart(void*,const ProcessingCallbacks&) noexcept { return ASE_NotPresent; }
 struct Api {
     std::vector<Device> (*devices)() = nativeCapableDevices;
     Failure (*open)(const Request&, void**) noexcept = nativeOpen;
-    ASIOError (*start)(void*) noexcept = unavailableOperation;
+    ASIOError (*start)(void*,const ProcessingCallbacks&) noexcept = unavailableStart;
     ASIOError (*stop)(void*) noexcept = unavailableOperation;
     ASIOError (*close)(void**) noexcept = closeDriver;
 };
@@ -62,9 +63,9 @@ public:
         state_ = pending;
         return Failure::none;
     }
-    Failure start() noexcept {
+    Failure start(const ProcessingCallbacks& callbacks) noexcept {
         if (!state_ || !api_.start) return Failure::configuration;
-        return failure(api_.start(state_));
+        return failure(api_.start(state_,callbacks));
     }
     Failure stop() noexcept {
         if (!state_) return Failure::none;

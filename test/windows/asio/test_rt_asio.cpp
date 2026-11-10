@@ -38,4 +38,22 @@ TEST(AsioAllocationProbe, DetectsScalarArrayNothrowAndAlignedAllocationsAndRelea
     }
     EXPECT_EQ(allocations,4u); EXPECT_EQ(deallocations,4u);
 }
+TEST(AsioRt, PreparedUserProcessingAndNullCallbacksDoNotAllocateOrRelease) {
+    DriverFixture fixture; ASIO backend;
+    ASSERT_TRUE(backend.open({driverId,Direction::Duplex,1,2,48000,Format::Float32,256}));
+    unsigned calls=0;
+    activeDriver->configureProcessing({.user=&calls,
+        .process=+[](void* user,const float* const*,std::uint32_t,float* const* outputs,std::uint32_t channels,std::uint32_t frames) noexcept {
+            ++*static_cast<unsigned*>(user);
+            for (unsigned ch=0;ch<channels;++ch) for (unsigned frame=0;frame<frames;++frame) outputs[ch][frame]=0.25f;
+        }});
+    ASSERT_TRUE(activeDriver->enableProcessing()); std::size_t allocations=0,deallocations=0;
+    {wasapi_rt::Scope scope;for (unsigned block=0;block<10000;++block) fixture.callbacks.bufferSwitch(block%2,ASIOTrue);
+        allocations=scope.news(); deallocations=scope.deletes();}
+    EXPECT_EQ(calls,10000u); EXPECT_EQ(allocations,0u); EXPECT_EQ(deallocations,0u);
+    activeDriver->retireProcessing(); activeDriver->configureProcessing({}); ASSERT_TRUE(activeDriver->enableProcessing());
+    {wasapi_rt::Scope scope;for (unsigned block=0;block<10000;++block) fixture.callbacks.bufferSwitch(block%2,ASIOFalse);
+        allocations=scope.news(); deallocations=scope.deletes();}
+    EXPECT_EQ(allocations,0u); EXPECT_EQ(deallocations,0u); ASSERT_TRUE(backend.close());
+}
 }

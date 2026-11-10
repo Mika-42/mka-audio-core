@@ -87,6 +87,7 @@ public:
     const std::vector<ASIOBufferInfo>& native() const noexcept { return infos_; }
     const std::vector<ChannelLayout>& layouts() const noexcept { return layouts_; }
     const std::vector<const float*>& inputChannels() const noexcept { return inputChannels_; }
+    float* inputData(std::uint32_t channel) noexcept { return inputScratch_.data() + static_cast<std::size_t>(channel) * frames_; }
     const std::vector<float*>& outputChannels() const noexcept { return outputChannels_; }
 private:
     std::uint32_t frames_ = 0, inputs_ = 0, outputs_ = 0;
@@ -96,7 +97,6 @@ private:
     std::vector<const float*> inputChannels_;
     std::vector<float*> outputChannels_;
 };
-inline void coldBufferSwitch(long, ASIOBool) noexcept {}
 inline void coldRateChanged(ASIOSampleRate) noexcept {}
 inline long coldMessage(long selector, long, void*, double*) noexcept { return selector == kAsioEngineVersion ? 2 : 0; }
 inline ASIOTime* coldTimeInfo(ASIOTime* info, long, ASIOBool) noexcept { return info; }

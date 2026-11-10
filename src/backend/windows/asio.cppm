@@ -43,10 +43,20 @@ protected:
             config.direction == Direction::Input ? Flow::input : config.direction == Direction::Output ? Flow::output : Flow::duplex,
             config.inputChannels, config.outputChannels, config.sampleRate, config.bufferSize, sample}));
     }
-    Result start_() override { return result(session_.start()); }
+    Result start_() override { return result(session_.start(processCallbacks())); }
     Result stop_() override { return result(session_.stop()); }
     Result close_() override { return result(session_.close()); }
 private:
+    mka_asio_detail::ProcessingCallbacks processCallbacks() noexcept {
+        return {.user=this,
+            .process=callback ? +[](void* user,const float* const* input,std::uint32_t inputs,
+                float* const* output,std::uint32_t outputs,std::uint32_t frames) noexcept {
+                    auto& self=*static_cast<ASIO*>(user);
+                    self.callback(self.userData,AudioProcessContext{{input,inputs},{output,outputs},frames});
+                } : nullptr,
+            .xrun=+[](void* user) noexcept { static_cast<ASIO*>(user)->notifyXRun(); },
+            .failed=+[](void* user) noexcept { static_cast<ASIO*>(user)->notifyFailed(); }};
+    }
     static std::vector<Format> formats(std::optional<mka_asio_detail::Sample> sample) {
         if (!sample) return {};
         switch (*sample) {

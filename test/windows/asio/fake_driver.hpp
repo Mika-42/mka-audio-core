@@ -108,6 +108,7 @@ struct DriverFixture {
         testLoaderOverride = nullptr;
         EXPECT_EQ(live, 0u); EXPECT_EQ(comReferences, uninitializes);
         EXPECT_EQ(activeDriver, nullptr); current = nullptr;
+        EXPECT_TRUE(CallbackRoute::empty());
     }
 };
 inline FakeDriver::FakeDriver(DriverFixture& owner) : owner_(owner) { ++owner_.live; }
