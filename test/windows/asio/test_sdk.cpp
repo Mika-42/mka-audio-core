@@ -1,11 +1,13 @@
+#include <gtest/gtest.h>
+#include <cstdint>
+#include <type_traits>
+// Load the C++ standard library before windows.h pulls intrinsics through a
+// C-linkage block; GCC module consumers must see the same C++ declarations.
 #include <windows.h>
 #include <unknwn.h>
 #include <asiosys.h>
 #include <asio.h>
 #include <iasiodrv.h>
-#include <gtest/gtest.h>
-#include <cstdint>
-#include <type_traits>
 import mka.audio.backend.abstract;
 
 namespace {
