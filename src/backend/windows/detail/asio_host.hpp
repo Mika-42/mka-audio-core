@@ -6,6 +6,7 @@
 #include <vector>
 #include <asiosys.h>
 #include <asio.h>
+#include "asio_devices.hpp"
 
 namespace mka_asio_detail {
 enum class Failure { none, endpoint, format, channels, rate, buffer, configuration };
@@ -17,7 +18,6 @@ struct Request {
     std::uint32_t inputs, outputs, rate, frames;
     Sample sample;
 };
-struct Device { std::string id, name; };
 inline Failure failure(ASIOError error) noexcept {
     switch (error) {
         case ASE_OK: return Failure::none;
@@ -32,9 +32,8 @@ inline Failure failure(ASIOError error) noexcept {
 inline ASIOError unavailable(const Request&, void** out) noexcept { *out = nullptr; return ASE_NotPresent; }
 inline ASIOError unavailableOperation(void*) noexcept { return ASE_NotPresent; }
 inline ASIOError releaseEmpty(void** state) noexcept { *state = nullptr; return ASE_OK; }
-inline std::vector<Device> noDevices() { return {}; }
 struct Api {
-    std::vector<Device> (*devices)() = noDevices;
+    std::vector<Device> (*devices)() = nativeDevices;
     ASIOError (*open)(const Request&, void**) noexcept = unavailable;
     ASIOError (*start)(void*) noexcept = unavailableOperation;
     ASIOError (*stop)(void*) noexcept = unavailableOperation;
