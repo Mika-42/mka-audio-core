@@ -29,8 +29,8 @@ public:
     ASIOError setClockSource(long) override { return ASE_NotPresent; }
     ASIOError getSamplePosition(ASIOSamples*, ASIOTimeStamp*) override { return ASE_SPNotAdvancing; }
     ASIOError getChannelInfo(ASIOChannelInfo*) override;
-    ASIOError createBuffers(ASIOBufferInfo*, long, long, ASIOCallbacks*) override { return ASE_InvalidMode; }
-    ASIOError disposeBuffers() override { return ASE_OK; }
+    ASIOError createBuffers(ASIOBufferInfo*, long, long, ASIOCallbacks*) override;
+    ASIOError disposeBuffers() override;
     ASIOError controlPanel() override { return ASE_NotPresent; }
     ASIOError future(long, void*) override { return ASE_InvalidParameter; }
     ASIOError outputReady() override { return ASE_NotPresent; }
@@ -65,6 +65,15 @@ struct DriverFixture {
     unsigned getCalls = 0, failGetNumber = 0;
     DWORD rateThread = 0;
     ASIOSampleRate channelsAtRate = 0, buffersAtRate = 0, infoAtRate = 0;
+    ASIOError createBuffersResult = ASE_OK, disposeResult = ASE_OK;
+    unsigned bufferCreations = 0, bufferDisposals = 0;
+    DWORD createBuffersThread = 0, disposeThread = 0;
+    long createdFrames = 0;
+    ASIOCallbacks callbacks{};
+    std::vector<ASIOBufferInfo> createdBuffers;
+    std::vector<std::vector<std::byte>> storage;
+    bool nullHalf = false, aliasedHalves = false, aliasedChannels = false;
+    bool changedDescriptor = false, changedBufferDirection = false, wrappingPointer = false, fireColdCallbacks = false;
     bool acceptInit = true, nullInterface = false, partialFailure = false, sta = false, validWindow = false;
     unsigned live = 0, destroyed = 0, creates = 0, inits = 0, comAttempts = 0, comReferences = 0, uninitializes = 0;
     DWORD creationThread = 0, initThread = 0, releaseThread = 0, uninitializeThread = 0;
@@ -112,6 +121,7 @@ inline HRESULT FakeDriver::QueryInterface(REFIID iid, void** out) {
 inline ULONG FakeDriver::Release() {
     const auto count = --references_;
     if (!count) {
+        owner_.storage.clear(); owner_.createdBuffers.clear();
         owner_.releaseThread = GetCurrentThreadId(); --owner_.live; ++owner_.destroyed; delete this;
     }
     return count;
@@ -166,5 +176,43 @@ inline ASIOError FakeDriver::setSampleRate(ASIOSampleRate rate) {
     owner_.rateThread = GetCurrentThreadId(); owner_.setRequests.push_back(rate);
     if (!owner_.ignoreRateSet && (owner_.setResult == ASE_OK || owner_.mutateOnRateError)) owner_.currentRate = rate;
     return owner_.setResult;
+}
+inline ASIOError FakeDriver::createBuffers(ASIOBufferInfo* infos, long count, long frames, ASIOCallbacks* callbacks) {
+    ++owner_.bufferCreations; owner_.createBuffersThread = GetCurrentThreadId(); owner_.createdFrames = frames;
+    owner_.callbacks = *callbacks;
+    if (count <= 0 || frames <= 0) return ASE_InvalidParameter;
+    owner_.storage.resize(static_cast<std::size_t>(count) * 2);
+    for (long index = 0; index < count; ++index) {
+        const auto& formats = infos[index].isInput ? owner_.inputFormats : owner_.outputFormats;
+        const auto type = infos[index].channelNum >= 0 && static_cast<std::size_t>(infos[index].channelNum) < formats.size()
+            ? formats[infos[index].channelNum] : owner_.nativeFormat;
+        const auto layout = channelLayout(type);
+        if (!layout) return ASE_InvalidMode;
+        for (std::size_t half = 0; half < 2; ++half) {
+            auto& bytes = owner_.storage[static_cast<std::size_t>(index) * 2 + half];
+            if (static_cast<std::size_t>(frames) > (std::numeric_limits<std::size_t>::max()-16) / layout->bytes)
+                return ASE_NoMemory;
+            bytes.assign(static_cast<std::size_t>(frames) * layout->bytes + 16, std::byte{0x5a});
+            infos[index].buffers[half] = bytes.data() + 8;
+        }
+    }
+    if (owner_.nullHalf) infos[0].buffers[1] = nullptr;
+    if (owner_.aliasedHalves) infos[0].buffers[1] = infos[0].buffers[0];
+    if (owner_.aliasedChannels && count > 1) infos[1].buffers[0] = infos[0].buffers[0];
+    if (owner_.changedDescriptor) ++infos[0].channelNum;
+    if (owner_.changedBufferDirection) infos[0].isInput = infos[0].isInput ? ASIOFalse : ASIOTrue;
+    if (owner_.wrappingPointer) infos[0].buffers[0] = reinterpret_cast<void*>(std::numeric_limits<std::uintptr_t>::max()-1);
+    owner_.createdBuffers.assign(infos,infos+count);
+    if (owner_.fireColdCallbacks) {
+        callbacks->bufferSwitch(0,ASIOTrue); callbacks->bufferSwitch(1,ASIOFalse);
+        callbacks->sampleRateDidChange(owner_.currentRate);
+        callbacks->bufferSwitchTimeInfo(nullptr,0,ASIOTrue);
+    }
+    return owner_.createBuffersResult;
+}
+inline ASIOError FakeDriver::disposeBuffers() {
+    ++owner_.bufferDisposals; owner_.disposeThread = GetCurrentThreadId();
+    if (owner_.disposeResult == ASE_OK) { owner_.storage.clear(); owner_.createdBuffers.clear(); }
+    return owner_.disposeResult;
 }
 }

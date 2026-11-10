@@ -21,7 +21,8 @@ inline Failure nativeOpen(const Request& request, void** out) noexcept {
         if (const auto result = driver.validateRate(request.rate); result != Failure::none) return result;
         if (const auto result = driver.validateChannels(request); result != Failure::none) return result;
         if (const auto result = driver.validateBuffers(request.frames); result != Failure::none) return result;
-        return driver.validateFormats(request);
+        if (const auto result = driver.validateFormats(request); result != Failure::none) return result;
+        return driver.allocateBuffers(request);
     }
     catch (...) { return Failure::configuration; }
 }

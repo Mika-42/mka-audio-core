@@ -165,3 +165,19 @@ rate before releasing the interface and verify that restoration. Cleanup still
 releases the interface if restoration fails and reports the native failure.
 Discovery only queries candidate and current supported rates; it never changes
 the clock. Open-session rate snapshots contain the exact verified rate.
+
+## Double buffers and scratch ownership (S06-10)
+
+Opening preallocates the SDK descriptor array, immutable layouts, planar Float32
+scratch and channel-pointer tables. Channel totals, signed SDK limits, sample
+counts and byte/address arithmetic are checked before use. Descriptors list
+inputs first, then outputs, with independent channel indices starting at zero.
+Both native halves must be non-null and disjoint, including across channels;
+the driver must not change descriptor identities. Both output halves are primed
+to silence after validation, while input data remains untouched.
+
+The SDK owns native sample memory; the host owns only scratch and tables. A
+buffer-creation attempt is disposed exactly once during close or rollback,
+including partial failure, before restoring the clock and releasing the driver.
+Cold SDK callbacks remain allocation-free and never enter the user DSP before
+start. S06-11 adds processing dispatch and S06-15 adds native start/stop.
