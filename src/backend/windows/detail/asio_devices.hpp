@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include "asio_types.hpp"
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -19,6 +20,7 @@ struct Device {
     std::string id, name;
     std::optional<ChannelCounts> channels;
     std::vector<std::uint32_t> bufferSizes;
+    std::optional<Sample> inputFormat, outputFormat;
 };
 struct RegistryApi {
     decltype(&RegOpenKeyExW) open = &RegOpenKeyExW;

@@ -3,6 +3,7 @@
 #include "asio_control.hpp"
 #include "asio_types.hpp"
 #include "asio_buffer_limits.hpp"
+#include "asio_channel_layout.hpp"
 #include <asiosys.h>
 #include <asio.h>
 #include <iasiodrv.h>
@@ -111,6 +112,49 @@ public:
         return buffers_->contains(frames) ? Failure::none : Failure::buffer;
     }
     std::vector<std::uint32_t> bufferSizes() const { return buffers_ ? buffers_->snapshot() : std::vector<std::uint32_t>{}; }
+    Failure readLayout(bool input, std::uint32_t channel, std::optional<ChannelLayout>& out) {
+        return control_.invoke([&] {
+            ASIOChannelInfo info{};
+            info.channel = static_cast<long>(channel);
+            info.isInput = input ? ASIOTrue : ASIOFalse;
+            const auto error = driver_->getChannelInfo(&info);
+            if (error != ASE_OK) return failure(error);
+            if (info.channel != static_cast<long>(channel) || info.isInput != (input ? ASIOTrue : ASIOFalse))
+                return Failure::channels;
+            out = channelLayout(info.type);
+            return out ? Failure::none : Failure::format;
+        });
+    }
+    Failure validateFormats(const Request& request) {
+        auto read = [&](bool input, std::uint32_t count, std::vector<ChannelLayout>& layouts) {
+            layouts.reserve(count);
+            for (std::uint32_t channel = 0; channel < count; ++channel) {
+                std::optional<ChannelLayout> layout;
+                if (const auto result = readLayout(input, channel, layout); result != Failure::none) return result;
+                if (layout->sample != request.sample) return Failure::format;
+                layouts.push_back(*layout);
+            }
+            return Failure::none;
+        };
+        if (const auto result = read(true, request.inputs, inputs_); result != Failure::none) return result;
+        if (const auto result = read(false, request.outputs, outputs_); result != Failure::none) return result;
+        if (!inputs_.empty()) inputFormat_ = inputs_[0].sample;
+        if (!outputs_.empty()) outputFormat_ = outputs_[0].sample;
+        return Failure::none;
+    }
+    void queryFormatCandidates() {
+        // Core selects channels starting at zero. The first channel determines
+        // the candidate format; open validates every requested channel. Avoid
+        // probing/allocating an unbounded number of advertised hardware ports.
+        std::optional<ChannelLayout> layout;
+        if (channels_->inputs && readLayout(true, 0, layout) == Failure::none) inputFormat_ = layout->sample;
+        layout.reset();
+        if (channels_->outputs && readLayout(false, 0, layout) == Failure::none) outputFormat_ = layout->sample;
+    }
+    std::optional<Sample> inputFormat() const noexcept { return inputFormat_; }
+    std::optional<Sample> outputFormat() const noexcept { return outputFormat_; }
+    const std::vector<ChannelLayout>& inputLayouts() const noexcept { return inputs_; }
+    const std::vector<ChannelLayout>& outputLayouts() const noexcept { return outputs_; }
     std::string id;
     DWORD thread() const noexcept { return control_.thread(); }
     HWND window() const noexcept { return control_.window(); }
@@ -122,6 +166,8 @@ private:
     ASIODriverInfo info_{};
     std::optional<ChannelCounts> channels_;
     std::optional<BufferLimits> buffers_;
+    std::optional<Sample> inputFormat_, outputFormat_;
+    std::vector<ChannelLayout> inputs_, outputs_;
 };
 
 inline std::mutex driverOwnership;
@@ -175,6 +221,8 @@ inline std::vector<Device> nativeCapableDevices() {
             if (activeDriver->id == device.id) {
                 device.channels = activeDriver->channels();
                 device.bufferSizes = activeDriver->bufferSizes();
+                device.inputFormat = activeDriver->inputFormat();
+                device.outputFormat = activeDriver->outputFormat();
             }
             continue;
         }
@@ -185,6 +233,9 @@ inline std::vector<Device> nativeCapableDevices() {
             if (probe.open(*clsid) == ASE_OK && probe.queryChannels() == Failure::none) {
                 device.channels = probe.channels();
                 if (probe.queryBuffers() == Failure::none) device.bufferSizes = probe.bufferSizes();
+                probe.queryFormatCandidates();
+                device.inputFormat = probe.inputFormat();
+                device.outputFormat = probe.outputFormat();
             }
         } catch (...) { device.channels.reset(); }
     }

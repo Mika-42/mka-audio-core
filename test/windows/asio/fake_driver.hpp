@@ -28,7 +28,7 @@ public:
     ASIOError getClockSources(ASIOClockSource*, long* count) override { *count = 0; return ASE_OK; }
     ASIOError setClockSource(long) override { return ASE_NotPresent; }
     ASIOError getSamplePosition(ASIOSamples*, ASIOTimeStamp*) override { return ASE_SPNotAdvancing; }
-    ASIOError getChannelInfo(ASIOChannelInfo*) override { return ASE_InvalidParameter; }
+    ASIOError getChannelInfo(ASIOChannelInfo*) override;
     ASIOError createBuffers(ASIOBufferInfo*, long, long, ASIOCallbacks*) override { return ASE_InvalidMode; }
     ASIOError disposeBuffers() override { return ASE_OK; }
     ASIOError controlPanel() override { return ASE_NotPresent; }
@@ -51,6 +51,12 @@ struct DriverFixture {
     long minimum = 64, maximum = 1024, preferred = 256, granularity = -1;
     unsigned bufferQueries = 0;
     DWORD bufferThread = 0;
+    ASIOError infoResult = ASE_OK;
+    ASIOSampleType nativeFormat = ASIOSTFloat32LSB;
+    std::vector<ASIOSampleType> inputFormats, outputFormats;
+    std::vector<std::pair<bool, long>> infoRequests;
+    bool wrongChannel = false, wrongDirection = false;
+    DWORD infoThread = 0;
     bool acceptInit = true, nullInterface = false, partialFailure = false, sta = false, validWindow = false;
     unsigned live = 0, destroyed = 0, creates = 0, inits = 0, comAttempts = 0, comReferences = 0, uninitializes = 0;
     DWORD creationThread = 0, initThread = 0, releaseThread = 0, uninitializeThread = 0;
@@ -120,5 +126,16 @@ inline ASIOError FakeDriver::getBufferSize(long* min, long* max, long* preferred
     ++owner_.bufferQueries; owner_.bufferThread = GetCurrentThreadId();
     *min = owner_.minimum; *max = owner_.maximum; *preferred = owner_.preferred;
     *granularity = owner_.granularity; return owner_.buffersResult;
+}
+inline ASIOError FakeDriver::getChannelInfo(ASIOChannelInfo* info) {
+    owner_.infoThread = GetCurrentThreadId();
+    const bool input = info->isInput == ASIOTrue;
+    owner_.infoRequests.push_back({input, info->channel});
+    const auto& formats = input ? owner_.inputFormats : owner_.outputFormats;
+    info->type = info->channel >= 0 && static_cast<std::size_t>(info->channel) < formats.size()
+        ? formats[info->channel] : owner_.nativeFormat;
+    if (owner_.wrongChannel) ++info->channel;
+    if (owner_.wrongDirection) info->isInput = input ? ASIOFalse : ASIOTrue;
+    return owner_.infoResult;
 }
 }

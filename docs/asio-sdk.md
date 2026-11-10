@@ -116,7 +116,7 @@ Windows SDK's signed 32-bit counts are checked before conversion to `uint32_t`.
 
 The metadata registry scan still loads no DLL. Public capability discovery now
 temporarily initializes each available driver, without starting audio, to expose
-channel ranges. Failed probes keep the identity but expose no usable direction.
+channel ranges. Failed channel probes keep the identity but expose no usable direction.
 While a session owns a driver, discovery uses its cached counts and leaves other
 drivers unprobed rather than disturbing the one-driver ownership rule. Snapshot
 capabilities own their data. Other capability lists are added by later cards.
@@ -134,3 +134,19 @@ preferred size and maximum, sorted and deduplicated. This bounds enumeration
 for drivers advertising extremely dense ranges; the list is indicative and
 `open()` still checks any requested size against the full native rule. Arithmetic
 uses widened unsigned intermediates; no audio buffers are allocated by the query.
+
+## Native channel formats (S06-08)
+
+Every requested channel is queried on the owner before audio starts. Its index
+and direction must match the query, and its sample format must match the request.
+Layouts retain byte order and container width separately: Int16/24/32 and
+Float32/64 support both ASIO byte orders; Int24 supports packed three-byte and
+right-aligned 24-in-32 layouts. This follows the SDK 2.3 sample-type definitions
+(pages 33–34). DSD and the other 16/18/20-in-32 variants are explicitly rejected.
+Conversion and transport are added by S06-13 through S06-15.
+
+Discovery reports the native format of channel zero as a candidate per direction,
+without probing an unbounded number of advertised ports. These lists do not
+promise every channel/format combination: opening validates all requested
+channels starting at zero. Open-session snapshots use only cached verified
+layouts; no channel query or port-table mutation is needed in the audio callback.
