@@ -21,8 +21,8 @@ protected:
         for (auto& device : session_.devices()) {
             Endpoint endpoint{std::move(device.id), std::move(device.name), std::nullopt, std::nullopt};
             if (device.channels) {
-                if (device.channels->inputs) endpoint.input = StreamCapabilities{1, device.channels->inputs, {}, {}, device.bufferSizes};
-                if (device.channels->outputs) endpoint.output = StreamCapabilities{1, device.channels->outputs, {}, {}, device.bufferSizes};
+                if (device.channels->inputs) endpoint.input = StreamCapabilities{1, device.channels->inputs, {}, formats(device.inputFormat), device.bufferSizes};
+                if (device.channels->outputs) endpoint.output = StreamCapabilities{1, device.channels->outputs, {}, formats(device.outputFormat), device.bufferSizes};
             }
             result.push_back(std::move(endpoint));
         }
@@ -47,6 +47,17 @@ protected:
     Result stop_() override { return result(session_.stop()); }
     Result close_() override { return result(session_.close()); }
 private:
+    static std::vector<Format> formats(std::optional<mka_asio_detail::Sample> sample) {
+        if (!sample) return {};
+        switch (*sample) {
+            case mka_asio_detail::Sample::i16: return {Format::Int16};
+            case mka_asio_detail::Sample::i24: return {Format::Int24};
+            case mka_asio_detail::Sample::i32: return {Format::Int32};
+            case mka_asio_detail::Sample::f32: return {Format::Float32};
+            case mka_asio_detail::Sample::f64: return {Format::Float64};
+        }
+        return {};
+    }
     static Result result(mka_asio_detail::Failure error) noexcept {
         using Failure = mka_asio_detail::Failure;
         switch (error) {

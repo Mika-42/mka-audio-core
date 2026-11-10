@@ -534,7 +534,7 @@ if(MKA_BUILD_ASIO)
         target_compile_definitions(mka-audio-asio PRIVATE MKA_ASIO_TESTING=1)
         add_executable(mka-audio-asio-native-tests test/windows/asio/test_host.cpp test/windows/asio/test_devices.cpp
             test/windows/asio/test_driver.cpp test/windows/asio/test_control.cpp test/windows/asio/test_channels.cpp
-            test/windows/asio/test_buffer_limits.cpp)
+            test/windows/asio/test_buffer_limits.cpp test/windows/asio/test_channel_layout.cpp)
         target_include_directories(mka-audio-asio-native-tests PRIVATE "${mka_asio_sdk_root}/common")
         target_compile_definitions(mka-audio-asio-native-tests PRIVATE MKA_ASIO_TESTING=1)
         target_link_libraries(mka-audio-asio-native-tests PRIVATE mka-audio-asio GTest::gtest_main)
