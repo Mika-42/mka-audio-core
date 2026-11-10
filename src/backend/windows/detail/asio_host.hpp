@@ -17,7 +17,9 @@ inline Failure nativeOpen(const Request& request, void** out) noexcept {
     if (result != Failure::none) return result;
     try {
         std::lock_guard lock(driverOwnership);
-        return static_cast<Driver*>(*out)->validateChannels(request);
+        auto& driver = *static_cast<Driver*>(*out);
+        if (const auto result = driver.validateChannels(request); result != Failure::none) return result;
+        return driver.validateBuffers(request.frames);
     }
     catch (...) { return Failure::configuration; }
 }
