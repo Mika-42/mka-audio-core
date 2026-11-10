@@ -6,6 +6,7 @@
 #include "asio_channel_layout.hpp"
 #include "asio_rates.hpp"
 #include "asio_audio_buffers.hpp"
+#include "asio_processing.hpp"
 #include <asiosys.h>
 #include <asio.h>
 #include <iasiodrv.h>
@@ -69,6 +70,7 @@ public:
     }
     ASIOError close() noexcept {
         if (!driver_) return ASE_OK;
+        retireProcessing();
         try {
             return control_.invoke([&]() -> ASIOError {
                 ASIOError restored = ASE_OK;
@@ -139,10 +141,15 @@ public:
             if (error != ASE_OK) return error == ASE_InvalidMode ? Failure::buffer : failure(error);
             if (const auto result = audio_.validateNative(); result != Failure::none) return result;
             audio_.primeOutputs();
-            return Failure::none;
+            return CallbackRoute::publish(processor_) ? Failure::none : Failure::configuration;
         });
     }
     const AudioBuffers& audioBuffers() const noexcept { return audio_; }
+    void configureProcessing(ProcessingCallbacks callbacks) noexcept { processor_.configure(callbacks); }
+    bool enableProcessing() noexcept {
+        return CallbackRoute::publish(processor_) && processor_.enable();
+    }
+    void retireProcessing() noexcept { processor_.disable(); CallbackRoute::retire(processor_); }
     Failure queryChannels() {
         return control_.invoke([&] {
             long inputs = -1, outputs = -1;
@@ -239,7 +246,8 @@ private:
     std::optional<ASIOSampleRate> originalRate_;
     std::vector<std::uint32_t> rates_;
     AudioBuffers audio_;
-    ASIOCallbacks callbacks_{&coldBufferSwitch, &coldRateChanged, &coldMessage, &coldTimeInfo};
+    AudioProcessor processor_{audio_};
+    ASIOCallbacks callbacks_{&sdkBufferSwitch, &coldRateChanged, &coldMessage, &coldTimeInfo};
     bool buffersAttempted_ = false;
 };
 

@@ -181,3 +181,20 @@ buffer-creation attempt is disposed exactly once during close or rollback,
 including partial failure, before restoring the clock and releasing the driver.
 Cold SDK callbacks remain allocation-free and never enter the user DSP before
 start. S06-11 adds processing dispatch and S06-15 adds native start/stop.
+
+## Callback dispatch (S06-11)
+
+The C-compatible bufferSwitch bridge routes to one published processor. Readers
+increment a lock-free in-flight counter before loading the owner. Close disables
+DSP, removes the owner and waits outside RT for readers before disposing buffers.
+Repeated or late callbacks with no owner do nothing. A non-waiting atomic flag
+rejects overlapping/reentrant blocks and reports an XRun. Invalid indices fail
+once without accessing native memory.
+
+Each accepted block clears all Float32 outputs, supplies fixed planar views and
+calls the bound user function once; a null function leaves silence. Both values
+of the directProcess scheduling hint use synchronous processing with no host
+allocation, lock or wait. Bindings preserve the backend instance and its user
+pointer, with XRun/Failed notifications through Core atomics. The native start
+gate stays disabled until S06-15; the dispatch tests enable the private processor
+explicitly with mocks. S06-13/14 supply the Core conversion hooks.

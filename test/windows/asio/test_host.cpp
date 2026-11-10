@@ -15,6 +15,7 @@ struct Mock {
     bool nullSuccess = false;
     unsigned opens = 0, starts = 0, stops = 0, closes = 0, live = 0;
     Request requested{};
+    ProcessingCallbacks processing;
     Mock() {
         current = this;
         api.open = +[](const Request& request, void** out) noexcept {
@@ -23,7 +24,9 @@ struct Mock {
             else { *out = &m; ++m.live; }
             return failure(m.opened);
         };
-        api.start = +[](void* value) noexcept { auto& m = *static_cast<Mock*>(value); ++m.starts; return m.started; };
+        api.start = +[](void* value,const ProcessingCallbacks& callbacks) noexcept {
+            auto& m = *static_cast<Mock*>(value); ++m.starts; m.processing=callbacks; return m.started;
+        };
         api.stop = +[](void* value) noexcept { auto& m = *static_cast<Mock*>(value); ++m.stops; return m.stopped; };
         api.close = +[](void** value) noexcept {
             auto& m = *static_cast<Mock*>(*value); ++m.closes; --m.live; *value = nullptr; return m.closed;
@@ -142,5 +145,35 @@ TEST(AsioHooks, MapsNativeErrorsIncludingUnknownCodesWithoutExposingSdkTypes) {
     EXPECT_EQ(failure(ASE_OK), Failure::none);
     // ASE_SUCCESS belongs to ASIOFuture queries, not transport operations.
     EXPECT_EQ(failure(ASE_SUCCESS), Failure::configuration);
+}
+
+TEST(AsioHooks, ProcessingBindingsPreserveEachBackendFunctionAndUserdata) {
+    Mock mock; ASIO first,second;
+    struct User {unsigned calls=0;float value;bool valid=true;}; User a{0,0.25f},b{0,-0.5f};
+    const auto process=+[](void* user,const AudioProcessContext& context) noexcept {
+        auto& data=*static_cast<User*>(user); ++data.calls;
+        data.valid &= context.frames==3 && context.input.count==1 && context.output.count==1;
+        context.output.channels[0][0]=data.value;
+    };
+    auto cfg=config(); cfg.direction=Direction::Duplex; cfg.inputChannels=1; cfg.outputChannels=1; cfg.bufferSize=3;
+    ASSERT_TRUE(first.setProcessFunction(process,&a)); ASSERT_TRUE(first.open(cfg)); ASSERT_TRUE(first.start());
+    const auto firstCallbacks=mock.processing;
+    ASSERT_TRUE(second.setProcessFunction(process,&b)); ASSERT_TRUE(second.open(cfg)); ASSERT_TRUE(second.start());
+    const auto secondCallbacks=mock.processing;
+    float input[3]{},output[3]{}; const float* inputs[]{input}; float* outputs[]{output};
+    firstCallbacks.process(firstCallbacks.user,inputs,1,outputs,1,3); EXPECT_FLOAT_EQ(output[0],0.25f);
+    secondCallbacks.process(secondCallbacks.user,inputs,1,outputs,1,3); EXPECT_FLOAT_EQ(output[0],-0.5f);
+    EXPECT_EQ(a.calls,1u); EXPECT_EQ(b.calls,1u); EXPECT_TRUE(a.valid); EXPECT_TRUE(b.valid);
+    ASSERT_TRUE(first.stop()); ASSERT_TRUE(first.close()); ASSERT_TRUE(second.stop()); ASSERT_TRUE(second.close());
+}
+
+TEST(AsioHooks, NativeNotificationsReachOnlyTheBoundInstanceStatus) {
+    Mock mock; ASIO first,second;
+    ASSERT_TRUE(first.open(config())); ASSERT_TRUE(first.start()); const auto callbacks=mock.processing;
+    ASSERT_TRUE(second.open(config())); ASSERT_TRUE(second.start());
+    callbacks.xrun(callbacks.user); callbacks.failed(callbacks.user); callbacks.failed(callbacks.user);
+    EXPECT_EQ(first.status().xruns,1u); EXPECT_TRUE(first.status().failed);
+    EXPECT_EQ(second.status().xruns,0u); EXPECT_FALSE(second.status().failed);
+    ASSERT_TRUE(first.stop()); ASSERT_TRUE(first.close()); ASSERT_TRUE(second.stop()); ASSERT_TRUE(second.close());
 }
 }
