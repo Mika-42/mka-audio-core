@@ -5,6 +5,7 @@
 #include "asio_buffer_limits.hpp"
 #include "asio_channel_layout.hpp"
 #include "asio_rates.hpp"
+#include "asio_audio_buffers.hpp"
 #include <asiosys.h>
 #include <asio.h>
 #include <iasiodrv.h>
@@ -71,15 +72,20 @@ public:
         try {
             return control_.invoke([&]() -> ASIOError {
                 ASIOError restored = ASE_OK;
+                if (buffersAttempted_) {
+                    buffersAttempted_ = false;
+                    restored = driver_->disposeBuffers();
+                }
                 if (originalRate_) {
                     const auto rate = *originalRate_;
                     originalRate_.reset();
-                    restored = driver_->setSampleRate(rate);
-                    if (restored == ASE_OK) {
+                    auto rateResult = driver_->setSampleRate(rate);
+                    if (rateResult == ASE_OK) {
                         ASIOSampleRate actual = 0;
-                        restored = driver_->getSampleRate(&actual);
-                        if (restored == ASE_OK && actual != rate) restored = ASE_NoClock;
+                        rateResult = driver_->getSampleRate(&actual);
+                        if (rateResult == ASE_OK && actual != rate) rateResult = ASE_NoClock;
                     }
+                    if (restored == ASE_OK) restored = rateResult;
                 }
                 auto* owned = std::exchange(driver_, nullptr);
                 owned->Release();
@@ -124,6 +130,19 @@ public:
         });
     }
     const std::vector<std::uint32_t>& sampleRates() const noexcept { return rates_; }
+    Failure allocateBuffers(const Request& request) {
+        if (const auto result = audio_.prepare(request, inputs_, outputs_); result != Failure::none) return result;
+        return control_.invoke([&] {
+            buffersAttempted_ = true;
+            const auto error = driver_->createBuffers(audio_.native().data(), static_cast<long>(audio_.native().size()),
+                static_cast<long>(request.frames), &callbacks_);
+            if (error != ASE_OK) return error == ASE_InvalidMode ? Failure::buffer : failure(error);
+            if (const auto result = audio_.validateNative(); result != Failure::none) return result;
+            audio_.primeOutputs();
+            return Failure::none;
+        });
+    }
+    const AudioBuffers& audioBuffers() const noexcept { return audio_; }
     Failure queryChannels() {
         return control_.invoke([&] {
             long inputs = -1, outputs = -1;
@@ -219,6 +238,9 @@ private:
     std::vector<ChannelLayout> inputs_, outputs_;
     std::optional<ASIOSampleRate> originalRate_;
     std::vector<std::uint32_t> rates_;
+    AudioBuffers audio_;
+    ASIOCallbacks callbacks_{&coldBufferSwitch, &coldRateChanged, &coldMessage, &coldTimeInfo};
+    bool buffersAttempted_ = false;
 };
 
 inline std::mutex driverOwnership;
