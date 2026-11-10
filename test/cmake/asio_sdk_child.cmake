@@ -1,0 +1,5 @@
+include("${ASIO_MODULE}")
+mka_validate_asio_sdk("${SDK_ROOT}" validated)
+if(NOT IS_DIRECTORY "${validated}")
+    message(FATAL_ERROR "Validator did not return a usable SDK directory")
+endif()

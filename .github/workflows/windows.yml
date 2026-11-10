@@ -40,11 +40,12 @@ jobs:
           if ((g++ -dumpfullversion) -ne '15.2.0') { throw 'GCC 15.2.0 is required' }
           if ((g++ -dumpmachine) -ne 'x86_64-w64-mingw32') { throw 'A Windows MinGW target is required' }
           g++ --version
-      - run: cmake --preset core -B build/windows-mingw15 -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON
+      - run: python ci/fetch_asio_sdk.py --destination build/asio-sdk
+      - run: cmake --preset core -B build/windows-mingw15 -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON -DMKA_BUILD_ASIO_SDK_TESTS=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
       - run: cmake --build build/windows-mingw15 --parallel 2
       - run: ctest --test-dir build/windows-mingw15 -L unit --no-tests=error --output-on-failure --parallel 2 --output-junit "$PWD/junit-windows-mingw15.xml"
       - name: Configure optimized MinGW module consumer
-        run: cmake --preset core -B build/windows-mingw15-release -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON -DCMAKE_BUILD_TYPE=Release
+        run: cmake --preset core -B build/windows-mingw15-release -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON -DCMAKE_BUILD_TYPE=Release -DMKA_BUILD_ASIO_SDK_TESTS=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
       - run: cmake --build build/windows-mingw15-release --parallel 2
       - run: ctest --test-dir build/windows-mingw15-release -L unit --no-tests=error --output-on-failure --parallel 2 --output-junit "$PWD/junit-windows-mingw15-release.xml"
       - uses: actions/upload-artifact@v4
@@ -70,7 +71,8 @@ jobs:
           arch: x64
       - name: Install build tools
         run: python -m pip install 'cmake>=4.0,<5' ninja
-      - run: cmake --preset windows-core
+      - run: python ci/fetch_asio_sdk.py --destination build/asio-sdk
+      - run: cmake --preset windows-core -DMKA_BUILD_ASIO_SDK_TESTS=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
       - run: cmake --build --preset windows-core --parallel 2
       - run: ctest --preset windows-core --output-junit "${{ github.workspace }}/junit-windows-core.xml"
       - uses: actions/upload-artifact@v4
