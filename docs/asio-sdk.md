@@ -91,3 +91,18 @@ ignored. The scan neither instantiates drivers nor starts audio. Returned
 snapshots own their strings and remain valid after registry changes. Capabilities
 are added by the following cards; metadata alone does not promise an openable
 configuration or available hardware.
+
+## Driver ownership and initialization (S06-05)
+
+Opening an enumerated CLSID creates its SDK IASIO interface on a dedicated STA
+owner with a hidden window and message pump. IASIO::init and the SDK driver-info
+queries perform the initialization normally wrapped by ASIOInit. The host owns
+and releases the interface directly rather than adopting the SDK example's
+global driver manager. This preserves stable CLSID selection and user-level
+registrations without copying SDK implementation files into the project.
+
+Only one native driver can be owned by this host at a time. COM creation/init
+failures release partial interfaces and balance successful COM initialization;
+the backend remains reusable. Close and destruction release the interface on its
+original owner even when requested by another thread. The next cards validate
+channels, buffers and formats before adding operational audio transport.

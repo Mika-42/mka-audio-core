@@ -7,6 +7,7 @@
 #include <asiosys.h>
 #include <asio.h>
 #include "asio_devices.hpp"
+#include "asio_driver.hpp"
 
 namespace mka_asio_detail {
 enum class Failure { none, endpoint, format, channels, rate, buffer, configuration };
@@ -29,15 +30,14 @@ inline Failure failure(ASIOError error) noexcept {
 
 // Native adapters consume their state on close, including cleanup after an
 // error. No SDK type is exposed by the exported Backend interface.
-inline ASIOError unavailable(const Request&, void** out) noexcept { *out = nullptr; return ASE_NotPresent; }
+inline ASIOError nativeOpen(const Request& request, void** out) noexcept { return openDriver(request.id, out); }
 inline ASIOError unavailableOperation(void*) noexcept { return ASE_NotPresent; }
-inline ASIOError releaseEmpty(void** state) noexcept { *state = nullptr; return ASE_OK; }
 struct Api {
     std::vector<Device> (*devices)() = nativeDevices;
-    ASIOError (*open)(const Request&, void**) noexcept = unavailable;
+    ASIOError (*open)(const Request&, void**) noexcept = nativeOpen;
     ASIOError (*start)(void*) noexcept = unavailableOperation;
     ASIOError (*stop)(void*) noexcept = unavailableOperation;
-    ASIOError (*close)(void**) noexcept = releaseEmpty;
+    ASIOError (*close)(void**) noexcept = closeDriver;
 };
 #if defined(MKA_ASIO_TESTING)
 inline std::atomic<const Api*> testApiOverride{nullptr};
