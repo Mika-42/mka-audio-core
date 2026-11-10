@@ -80,3 +80,14 @@ the session. Tests inject private native operations to verify ownership,
 rollback, error translation and lifecycle transitions. Test injection is omitted
 from library-only builds. Driver discovery/loading is supplied by the following
 cards; the current native default reports an unavailable endpoint.
+
+## Driver discovery (S06-04)
+
+Discovery reads the process-architecture ASIO registrations in HKCU and HKLM,
+checks their CLSIDs and registered in-process DLL paths, and returns UTF-8 names
+with canonical `asio:{guid}` identities. User registrations take precedence for
+duplicate identities. Missing classes/DLLs and malformed registry values are
+ignored. The scan neither instantiates drivers nor starts audio. Returned
+snapshots own their strings and remain valid after registry changes. Capabilities
+are added by the following cards; metadata alone does not promise an openable
+configuration or available hardware.

@@ -17,7 +17,7 @@ TEST(AsioModule, ImportsPortableContractWithoutAnySdkIncludeDirectory) {
 TEST(AsioModule, PublicClassConstructsWithoutSdkHeadersAndNeverInventsAnOpenStream) {
     using namespace mka::audio::core;
     ASIO backend;
-    EXPECT_TRUE(backend.getEndPoints().empty());
+    [[maybe_unused]] const auto snapshot = backend.getEndPoints();
     EXPECT_TRUE(backend.setProcessFunction(nullptr));
     const EndpointConfig config{"missing", Direction::Output, 0, 2, 48000, Format::Float32, 256};
     EXPECT_EQ(backend.open(config).error(), ErrorType::EndpointUnavailable);
