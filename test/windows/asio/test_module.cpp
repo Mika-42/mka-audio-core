@@ -13,3 +13,13 @@ TEST(AsioModule, ImportsPortableContractWithoutAnySdkIncludeDirectory) {
     EXPECT_EQ(config.outputChannels, 2u);
     EXPECT_TRUE(Result{});
 }
+
+TEST(AsioModule, PublicClassConstructsWithoutSdkHeadersAndNeverInventsAnOpenStream) {
+    using namespace mka::audio::core;
+    ASIO backend;
+    EXPECT_TRUE(backend.getEndPoints().empty());
+    EXPECT_TRUE(backend.setProcessFunction(nullptr));
+    const EndpointConfig config{"missing", Direction::Output, 0, 2, 48000, Format::Float32, 256};
+    EXPECT_EQ(backend.open(config).error(), ErrorType::EndpointUnavailable);
+    EXPECT_EQ(backend.start().error(), ErrorType::InvalidState);
+}

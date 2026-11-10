@@ -69,3 +69,14 @@ ctest --test-dir build/asio -L asio --output-on-failure
 The target currently establishes module integration; the following cards add
 the ASIO class, driver access and processing. Enabling the target does not yet
 establish operational audio support. Linux/macOS requests fail explicitly.
+
+## Backend hooks (S06-03)
+
+`mka::audio::core::ASIO` implements the existing Backend hooks and is neither
+copyable nor movable. SDK handles and native errors stay inside its private
+session. Pending open resources are released on failure; the previous public
+state remains available for retry. Destruction stops processing before releasing
+the session. Tests inject private native operations to verify ownership,
+rollback, error translation and lifecycle transitions. Test injection is omitted
+from library-only builds. Driver discovery/loading is supplied by the following
+cards; the current native default reports an unavailable endpoint.

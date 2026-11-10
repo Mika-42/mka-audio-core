@@ -16,4 +16,5 @@ for entry in entries:
         assert "asiosdk/common" not in command, entry
     if args.library_only:
         assert "/test/" not in filename and "googletest" not in filename, entry
+        assert "mka_asio_testing" not in command, entry
 print("ASIO target is built; SDK paths stay private; library-only constraints verified:", args.library_only)
