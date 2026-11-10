@@ -21,8 +21,8 @@ protected:
         for (auto& device : session_.devices()) {
             Endpoint endpoint{std::move(device.id), std::move(device.name), std::nullopt, std::nullopt};
             if (device.channels) {
-                if (device.channels->inputs) endpoint.input = StreamCapabilities{1, device.channels->inputs, {}, formats(device.inputFormat), device.bufferSizes};
-                if (device.channels->outputs) endpoint.output = StreamCapabilities{1, device.channels->outputs, {}, formats(device.outputFormat), device.bufferSizes};
+                if (device.channels->inputs) endpoint.input = StreamCapabilities{1, device.channels->inputs, device.sampleRates, formats(device.inputFormat), device.bufferSizes};
+                if (device.channels->outputs) endpoint.output = StreamCapabilities{1, device.channels->outputs, device.sampleRates, formats(device.outputFormat), device.bufferSizes};
             }
             result.push_back(std::move(endpoint));
         }

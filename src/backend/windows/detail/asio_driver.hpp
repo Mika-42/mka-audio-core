@@ -4,6 +4,7 @@
 #include "asio_types.hpp"
 #include "asio_buffer_limits.hpp"
 #include "asio_channel_layout.hpp"
+#include "asio_rates.hpp"
 #include <asiosys.h>
 #include <asio.h>
 #include <iasiodrv.h>
@@ -68,13 +69,61 @@ public:
     ASIOError close() noexcept {
         if (!driver_) return ASE_OK;
         try {
-            control_.invoke([&] {
+            return control_.invoke([&]() -> ASIOError {
+                ASIOError restored = ASE_OK;
+                if (originalRate_) {
+                    const auto rate = *originalRate_;
+                    originalRate_.reset();
+                    restored = driver_->setSampleRate(rate);
+                    if (restored == ASE_OK) {
+                        ASIOSampleRate actual = 0;
+                        restored = driver_->getSampleRate(&actual);
+                        if (restored == ASE_OK && actual != rate) restored = ASE_NoClock;
+                    }
+                }
                 auto* owned = std::exchange(driver_, nullptr);
                 owned->Release();
+                return restored;
             });
-            return ASE_OK;
         } catch (...) { return ASE_HWMalfunction; }
     }
+    Failure validateRate(std::uint32_t requested) {
+        if (!requested) return Failure::rate;
+        return control_.invoke([&] {
+            const ASIOSampleRate rate = requested; // every uint32_t is exact in binary64
+            auto error = driver_->canSampleRate(rate);
+            if (error != ASE_OK) return failure(error);
+            ASIOSampleRate initial = 0;
+            error = driver_->getSampleRate(&initial);
+            if (error != ASE_OK) return failure(error);
+            if (!portableRate(initial)) return Failure::rate;
+            if (initial != rate) {
+                originalRate_ = initial; // also roll back a partially failing setter
+                error = driver_->setSampleRate(rate);
+                if (error != ASE_OK)
+                    return error == ASE_InvalidMode || error == ASE_InvalidParameter ? Failure::rate : failure(error);
+            }
+            ASIOSampleRate actual = 0;
+            error = driver_->getSampleRate(&actual);
+            if (error != ASE_OK) return failure(error);
+            if (actual != rate || !portableRate(actual)) return Failure::rate;
+            rates_ = {requested};
+            return Failure::none;
+        });
+    }
+    void queryRateCandidates() {
+        control_.invoke([&] {
+            for (const auto rate : {44100u, 48000u, 88200u, 96000u, 176400u, 192000u})
+                if (driver_->canSampleRate(rate) == ASE_OK) rates_.push_back(rate);
+            ASIOSampleRate current = 0;
+            if (driver_->getSampleRate(&current) == ASE_OK)
+                if (const auto rate = portableRate(current); rate && driver_->canSampleRate(current) == ASE_OK)
+                    rates_.push_back(*rate);
+            std::sort(rates_.begin(), rates_.end());
+            rates_.erase(std::unique(rates_.begin(), rates_.end()), rates_.end());
+        });
+    }
+    const std::vector<std::uint32_t>& sampleRates() const noexcept { return rates_; }
     Failure queryChannels() {
         return control_.invoke([&] {
             long inputs = -1, outputs = -1;
@@ -168,6 +217,8 @@ private:
     std::optional<BufferLimits> buffers_;
     std::optional<Sample> inputFormat_, outputFormat_;
     std::vector<ChannelLayout> inputs_, outputs_;
+    std::optional<ASIOSampleRate> originalRate_;
+    std::vector<std::uint32_t> rates_;
 };
 
 inline std::mutex driverOwnership;
@@ -223,6 +274,7 @@ inline std::vector<Device> nativeCapableDevices() {
                 device.bufferSizes = activeDriver->bufferSizes();
                 device.inputFormat = activeDriver->inputFormat();
                 device.outputFormat = activeDriver->outputFormat();
+                device.sampleRates = activeDriver->sampleRates();
             }
             continue;
         }
@@ -236,6 +288,8 @@ inline std::vector<Device> nativeCapableDevices() {
                 probe.queryFormatCandidates();
                 device.inputFormat = probe.inputFormat();
                 device.outputFormat = probe.outputFormat();
+                probe.queryRateCandidates();
+                device.sampleRates = probe.sampleRates();
             }
         } catch (...) { device.channels.reset(); }
     }
