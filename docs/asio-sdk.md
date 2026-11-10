@@ -106,3 +106,17 @@ failures release partial interfaces and balance successful COM initialization;
 the backend remains reusable. Close and destruction release the interface on its
 original owner even when requested by another thread. The next cards validate
 channels, buffers and formats before adding operational audio transport.
+
+## Channel capabilities (S06-06)
+
+Opening queries real input/output counts on the driver owner and rejects negative
+counts or requests beyond them. Zero native channels means an absent direction;
+the portable contract already rejects a request with zero active channels. The
+Windows SDK's signed 32-bit counts are checked before conversion to `uint32_t`.
+
+The metadata registry scan still loads no DLL. Public capability discovery now
+temporarily initializes each available driver, without starting audio, to expose
+channel ranges. Failed probes keep the identity but expose no usable direction.
+While a session owns a driver, discovery uses its cached counts and leaves other
+drivers unprobed rather than disturbing the one-driver ownership rule. Snapshot
+capabilities own their data. Other capability lists are added by later cards.

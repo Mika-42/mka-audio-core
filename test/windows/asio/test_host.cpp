@@ -21,7 +21,7 @@ struct Mock {
             auto& m = *current; ++m.opens; m.requested = request;
             if (m.nullSuccess) *out = nullptr;
             else { *out = &m; ++m.live; }
-            return m.opened;
+            return failure(m.opened);
         };
         api.start = +[](void* value) noexcept { auto& m = *static_cast<Mock*>(value); ++m.starts; return m.started; };
         api.stop = +[](void* value) noexcept { auto& m = *static_cast<Mock*>(value); ++m.stops; return m.stopped; };
