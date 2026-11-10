@@ -21,6 +21,7 @@ struct Device {
     std::optional<ChannelCounts> channels;
     std::vector<std::uint32_t> bufferSizes;
     std::optional<Sample> inputFormat, outputFormat;
+    std::vector<std::uint32_t> sampleRates;
 };
 struct RegistryApi {
     decltype(&RegOpenKeyExW) open = &RegOpenKeyExW;

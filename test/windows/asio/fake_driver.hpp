@@ -22,9 +22,9 @@ public:
     ASIOError getChannels(long* input, long* output) override;
     ASIOError getLatencies(long* input, long* output) override { *input = 64; *output = 64; return ASE_OK; }
     ASIOError getBufferSize(long* min, long* max, long* preferred, long* granularity) override;
-    ASIOError canSampleRate(ASIOSampleRate) override { return ASE_OK; }
-    ASIOError getSampleRate(ASIOSampleRate* out) override { *out = 48000; return ASE_OK; }
-    ASIOError setSampleRate(ASIOSampleRate) override { return ASE_OK; }
+    ASIOError canSampleRate(ASIOSampleRate) override;
+    ASIOError getSampleRate(ASIOSampleRate*) override;
+    ASIOError setSampleRate(ASIOSampleRate) override;
     ASIOError getClockSources(ASIOClockSource*, long* count) override { *count = 0; return ASE_OK; }
     ASIOError setClockSource(long) override { return ASE_NotPresent; }
     ASIOError getSamplePosition(ASIOSamples*, ASIOTimeStamp*) override { return ASE_SPNotAdvancing; }
@@ -57,6 +57,14 @@ struct DriverFixture {
     std::vector<std::pair<bool, long>> infoRequests;
     bool wrongChannel = false, wrongDirection = false;
     DWORD infoThread = 0;
+    ASIOSampleRate currentRate = 48000;
+    std::vector<ASIOSampleRate> supportedRates{44100,48000,88200,96000,176400,192000};
+    std::vector<ASIOSampleRate> rateRequests, setRequests, reportedRates;
+    ASIOError canResult = ASE_OK, getResult = ASE_OK, setResult = ASE_OK;
+    bool ignoreRateSet = false, mutateOnRateError = false;
+    unsigned getCalls = 0, failGetNumber = 0;
+    DWORD rateThread = 0;
+    ASIOSampleRate channelsAtRate = 0, buffersAtRate = 0, infoAtRate = 0;
     bool acceptInit = true, nullInterface = false, partialFailure = false, sta = false, validWindow = false;
     unsigned live = 0, destroyed = 0, creates = 0, inits = 0, comAttempts = 0, comReferences = 0, uninitializes = 0;
     DWORD creationThread = 0, initThread = 0, releaseThread = 0, uninitializeThread = 0;
@@ -119,15 +127,18 @@ inline ASIOBool FakeDriver::init(void* window) {
 }
 inline void FakeDriver::getDriverName(char* name) { std::memcpy(name, "Test ASIO", 10); }
 inline ASIOError FakeDriver::getChannels(long* input, long* output) {
+    owner_.channelsAtRate = owner_.currentRate;
     ++owner_.channelQueries; owner_.channelThread = GetCurrentThreadId();
     *input = owner_.inputs; *output = owner_.outputs; return owner_.channelsResult;
 }
 inline ASIOError FakeDriver::getBufferSize(long* min, long* max, long* preferred, long* granularity) {
+    owner_.buffersAtRate = owner_.currentRate;
     ++owner_.bufferQueries; owner_.bufferThread = GetCurrentThreadId();
     *min = owner_.minimum; *max = owner_.maximum; *preferred = owner_.preferred;
     *granularity = owner_.granularity; return owner_.buffersResult;
 }
 inline ASIOError FakeDriver::getChannelInfo(ASIOChannelInfo* info) {
+    owner_.infoAtRate = owner_.currentRate;
     owner_.infoThread = GetCurrentThreadId();
     const bool input = info->isInput == ASIOTrue;
     owner_.infoRequests.push_back({input, info->channel});
@@ -137,5 +148,23 @@ inline ASIOError FakeDriver::getChannelInfo(ASIOChannelInfo* info) {
     if (owner_.wrongChannel) ++info->channel;
     if (owner_.wrongDirection) info->isInput = input ? ASIOFalse : ASIOTrue;
     return owner_.infoResult;
+}
+inline ASIOError FakeDriver::canSampleRate(ASIOSampleRate rate) {
+    owner_.rateThread = GetCurrentThreadId(); owner_.rateRequests.push_back(rate);
+    if (owner_.canResult != ASE_OK) return owner_.canResult;
+    return std::find(owner_.supportedRates.begin(),owner_.supportedRates.end(),rate) != owner_.supportedRates.end()
+        ? ASE_OK : ASE_NoClock;
+}
+inline ASIOError FakeDriver::getSampleRate(ASIOSampleRate* out) {
+    owner_.rateThread = GetCurrentThreadId();
+    const auto index = owner_.getCalls++;
+    *out = owner_.reportedRates.empty() ? owner_.currentRate
+        : owner_.reportedRates[std::min<std::size_t>(index,owner_.reportedRates.size()-1)];
+    return !owner_.failGetNumber || owner_.getCalls == owner_.failGetNumber ? owner_.getResult : ASE_OK;
+}
+inline ASIOError FakeDriver::setSampleRate(ASIOSampleRate rate) {
+    owner_.rateThread = GetCurrentThreadId(); owner_.setRequests.push_back(rate);
+    if (!owner_.ignoreRateSet && (owner_.setResult == ASE_OK || owner_.mutateOnRateError)) owner_.currentRate = rate;
+    return owner_.setResult;
 }
 }

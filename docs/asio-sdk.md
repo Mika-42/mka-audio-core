@@ -150,3 +150,18 @@ without probing an unbounded number of advertised ports. These lists do not
 promise every channel/format combination: opening validates all requested
 channels starting at zero. Open-session snapshots use only cached verified
 layouts; no channel query or port-table mutation is needed in the audio callback.
+
+## Exact sample rate and clock policy (S06-09)
+
+An explicit `open()` authorizes selecting its exact requested rate. The owner
+checks ASIOCanSampleRate, reads a valid initial rate, sets the requested value
+only if different, then re-reads it. An unavailable/external clock, invalid
+measurement, or mismatch fails; 44.1 and 48 kHz are never interchanged silently.
+Channel counts, buffer limits and layouts are queried after clock selection,
+since they may depend on the chosen rate.
+
+If this host attempted a clock change, rollback and close restore the original
+rate before releasing the interface and verify that restoration. Cleanup still
+releases the interface if restoration fails and reports the native failure.
+Discovery only queries candidate and current supported rates; it never changes
+the clock. Open-session rate snapshots contain the exact verified rate.
