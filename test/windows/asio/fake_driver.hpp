@@ -21,9 +21,7 @@ public:
     ASIOError stop() override { return ASE_OK; }
     ASIOError getChannels(long* input, long* output) override;
     ASIOError getLatencies(long* input, long* output) override { *input = 64; *output = 64; return ASE_OK; }
-    ASIOError getBufferSize(long* min, long* max, long* preferred, long* granularity) override {
-        *min = 64; *max = 1024; *preferred = 256; *granularity = -1; return ASE_OK;
-    }
+    ASIOError getBufferSize(long* min, long* max, long* preferred, long* granularity) override;
     ASIOError canSampleRate(ASIOSampleRate) override { return ASE_OK; }
     ASIOError getSampleRate(ASIOSampleRate* out) override { *out = 48000; return ASE_OK; }
     ASIOError setSampleRate(ASIOSampleRate) override { return ASE_OK; }
@@ -49,6 +47,10 @@ struct DriverFixture {
     long inputs = 2, outputs = 2;
     unsigned channelQueries = 0;
     DWORD channelThread = 0;
+    ASIOError buffersResult = ASE_OK;
+    long minimum = 64, maximum = 1024, preferred = 256, granularity = -1;
+    unsigned bufferQueries = 0;
+    DWORD bufferThread = 0;
     bool acceptInit = true, nullInterface = false, partialFailure = false, sta = false, validWindow = false;
     unsigned live = 0, destroyed = 0, creates = 0, inits = 0, comAttempts = 0, comReferences = 0, uninitializes = 0;
     DWORD creationThread = 0, initThread = 0, releaseThread = 0, uninitializeThread = 0;
@@ -113,5 +115,10 @@ inline void FakeDriver::getDriverName(char* name) { std::memcpy(name, "Test ASIO
 inline ASIOError FakeDriver::getChannels(long* input, long* output) {
     ++owner_.channelQueries; owner_.channelThread = GetCurrentThreadId();
     *input = owner_.inputs; *output = owner_.outputs; return owner_.channelsResult;
+}
+inline ASIOError FakeDriver::getBufferSize(long* min, long* max, long* preferred, long* granularity) {
+    ++owner_.bufferQueries; owner_.bufferThread = GetCurrentThreadId();
+    *min = owner_.minimum; *max = owner_.maximum; *preferred = owner_.preferred;
+    *granularity = owner_.granularity; return owner_.buffersResult;
 }
 }

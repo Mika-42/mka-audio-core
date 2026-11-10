@@ -120,3 +120,17 @@ channel ranges. Failed probes keep the identity but expose no usable direction.
 While a session owns a driver, discovery uses its cached counts and leaves other
 drivers unprobed rather than disturbing the one-driver ownership rule. Snapshot
 capabilities own their data. Other capability lists are added by later cards.
+
+## Exact buffer sizes (S06-07)
+
+The driver owner's buffer-size query must provide positive, ordered bounds and
+a valid preferred size. Zero granularity denotes one fixed size; -1 denotes
+powers of two; a positive step is measured from the minimum. Invalid or
+inconsistent bounds/granularity are rejected. `open()` requires exactly the
+requested frame count and never replaces it with the driver's preferred size.
+
+Capability snapshots include up to 256 sequential supported sizes plus the
+preferred size and maximum, sorted and deduplicated. This bounds enumeration
+for drivers advertising extremely dense ranges; the list is indicative and
+`open()` still checks any requested size against the full native rule. Arithmetic
+uses widened unsigned intermediates; no audio buffers are allocated by the query.

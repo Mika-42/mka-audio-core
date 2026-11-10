@@ -2,6 +2,7 @@
 #include "asio_devices.hpp"
 #include "asio_control.hpp"
 #include "asio_types.hpp"
+#include "asio_buffer_limits.hpp"
 #include <asiosys.h>
 #include <asio.h>
 #include <iasiodrv.h>
@@ -94,6 +95,22 @@ public:
         return Failure::none;
     }
     std::optional<ChannelCounts> channels() const noexcept { return channels_; }
+    Failure queryBuffers() {
+        return control_.invoke([&] {
+            long minimum = -1, maximum = -1, preferred = -1, granularity = -2;
+            const auto error = driver_->getBufferSize(&minimum, &maximum, &preferred, &granularity);
+            if (error != ASE_OK) return failure(error);
+            const auto limits = BufferLimits::fromNative(minimum, maximum, preferred, granularity);
+            if (!limits) return Failure::buffer;
+            buffers_ = limits;
+            return Failure::none;
+        });
+    }
+    Failure validateBuffers(std::uint32_t frames) {
+        if (const auto result = queryBuffers(); result != Failure::none) return result;
+        return buffers_->contains(frames) ? Failure::none : Failure::buffer;
+    }
+    std::vector<std::uint32_t> bufferSizes() const { return buffers_ ? buffers_->snapshot() : std::vector<std::uint32_t>{}; }
     std::string id;
     DWORD thread() const noexcept { return control_.thread(); }
     HWND window() const noexcept { return control_.window(); }
@@ -104,6 +121,7 @@ private:
     IASIO* driver_ = nullptr;
     ASIODriverInfo info_{};
     std::optional<ChannelCounts> channels_;
+    std::optional<BufferLimits> buffers_;
 };
 
 inline std::mutex driverOwnership;
@@ -154,15 +172,20 @@ inline std::vector<Device> nativeCapableDevices() {
     std::lock_guard lock(driverOwnership);
     for (auto& device : devices) {
         if (activeDriver) {
-            if (activeDriver->id == device.id) device.channels = activeDriver->channels();
+            if (activeDriver->id == device.id) {
+                device.channels = activeDriver->channels();
+                device.bufferSizes = activeDriver->bufferSizes();
+            }
             continue;
         }
         try {
             const auto clsid = driverClass(device.id);
             if (!clsid) continue;
             Driver probe(api);
-            if (probe.open(*clsid) == ASE_OK && probe.queryChannels() == Failure::none)
+            if (probe.open(*clsid) == ASE_OK && probe.queryChannels() == Failure::none) {
                 device.channels = probe.channels();
+                if (probe.queryBuffers() == Failure::none) device.bufferSizes = probe.bufferSizes();
+            }
         } catch (...) { device.channels.reset(); }
     }
     return devices;
