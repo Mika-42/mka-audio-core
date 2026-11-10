@@ -20,7 +20,7 @@ struct Request {
 struct Device { std::string id, name; };
 inline Failure failure(ASIOError error) noexcept {
     switch (error) {
-        case ASE_OK: case ASE_SUCCESS: return Failure::none;
+        case ASE_OK: return Failure::none;
         case ASE_NotPresent: case ASE_HWMalfunction: return Failure::endpoint;
         case ASE_NoClock: return Failure::rate;
         default: return Failure::configuration;

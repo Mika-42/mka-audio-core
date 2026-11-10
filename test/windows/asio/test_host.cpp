@@ -133,12 +133,14 @@ TEST(AsioHooks, InvalidPortableConfigurationNeverEntersTheNativeAdapter) {
 }
 
 TEST(AsioHooks, MapsNativeErrorsIncludingUnknownCodesWithoutExposingSdkTypes) {
-    for (auto native : {ASE_InvalidParameter, ASE_InvalidMode, ASE_NoMemory, ASE_NoTimeInfo, ASIOError(-42), ASIOError(42)})
+    const ASIOError errors[]{ASE_InvalidParameter, ASE_InvalidMode, ASE_NoMemory, ASE_SPNotAdvancing, -42, 42};
+    for (auto native : errors)
         EXPECT_EQ(failure(native), Failure::configuration);
     EXPECT_EQ(failure(ASE_NotPresent), Failure::endpoint);
     EXPECT_EQ(failure(ASE_HWMalfunction), Failure::endpoint);
     EXPECT_EQ(failure(ASE_NoClock), Failure::rate);
     EXPECT_EQ(failure(ASE_OK), Failure::none);
-    EXPECT_EQ(failure(ASE_SUCCESS), Failure::none);
+    // ASE_SUCCESS belongs to ASIOFuture queries, not transport operations.
+    EXPECT_EQ(failure(ASE_SUCCESS), Failure::configuration);
 }
 }
