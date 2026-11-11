@@ -41,15 +41,17 @@ jobs:
           if ((g++ -dumpmachine) -ne 'x86_64-w64-mingw32') { throw 'A Windows MinGW target is required' }
           g++ --version
       - run: python ci/fetch_asio_sdk.py --destination build/asio-sdk
-      - run: cmake --preset core -B build/windows-mingw15 -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON -DMKA_BUILD_ASIO_SDK_TESTS=ON -DMKA_BUILD_ASIO=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
+      - run: cmake --preset core -B build/windows-mingw15 -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON -DMKA_BUILD_ASIO_SDK_TESTS=ON -DMKA_BUILD_ASIO=ON -DMKA_BUILD_DIRECTSOUND=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
       - run: cmake --build build/windows-mingw15 --parallel 2
       - run: python ci/check_manual_audio_tests.py build/windows-mingw15 asio
       - run: python ci/check_asio_build.py build/windows-mingw15
+      - run: python ci/check_directsound_build.py build/windows-mingw15
       - run: ctest --test-dir build/windows-mingw15 -L unit --no-tests=error --output-on-failure --parallel 2 --output-junit "$PWD/junit-windows-mingw15.xml"
       - name: Configure optimized MinGW module consumer
-        run: cmake --preset core -B build/windows-mingw15-release -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON -DCMAKE_BUILD_TYPE=Release -DMKA_BUILD_ASIO_SDK_TESTS=ON -DMKA_BUILD_ASIO=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
+        run: cmake --preset core -B build/windows-mingw15-release -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON -DCMAKE_BUILD_TYPE=Release -DMKA_BUILD_ASIO_SDK_TESTS=ON -DMKA_BUILD_ASIO=ON -DMKA_BUILD_DIRECTSOUND=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
       - run: cmake --build build/windows-mingw15-release --parallel 2
       - run: python ci/check_manual_audio_tests.py build/windows-mingw15-release asio
+      - run: python ci/check_directsound_build.py build/windows-mingw15-release
       - run: ctest --test-dir build/windows-mingw15-release -L unit --no-tests=error --output-on-failure --parallel 2 --output-junit "$PWD/junit-windows-mingw15-release.xml"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -75,10 +77,16 @@ jobs:
       - name: Install build tools
         run: python -m pip install 'cmake>=4.0,<5' ninja
       - run: python ci/fetch_asio_sdk.py --destination build/asio-sdk
-      - run: cmake --preset windows-core -DMKA_BUILD_ASIO_SDK_TESTS=ON -DMKA_BUILD_ASIO=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
+      - run: cmake --preset windows-core -DMKA_BUILD_ASIO_SDK_TESTS=ON -DMKA_BUILD_ASIO=ON -DMKA_BUILD_DIRECTSOUND=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
       - run: cmake --build --preset windows-core --parallel 2
       - run: python ci/check_manual_audio_tests.py build/windows-core asio
       - run: python ci/check_asio_build.py build/windows-core
+      - run: python ci/check_directsound_build.py build/windows-core
+      - name: Build DirectSound independently without tests, WASAPI or ASIO
+        run: |
+          cmake --preset windows-directsound -B build/directsound-production -DMKA_BUILD_TESTS=OFF
+          cmake --build build/directsound-production --parallel 2
+          python ci/check_directsound_build.py build/directsound-production --library-only
       - name: Build ASIO without GoogleTest or SDK tests
         run: |
           cmake --preset windows-asio -B build/asio-production -DMKA_BUILD_TESTS=OFF -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
@@ -110,6 +118,7 @@ jobs:
       - run: python -m pip install 'cmake>=4.0,<5' ninja
       - run: cmake --preset windows-wasapi
       - run: cmake --build --preset windows-wasapi --parallel 2
+      - run: python ci/check_directsound_build.py build/windows-wasapi --disabled
       - name: Verify audible tests are compiled, discoverable and opt-in
         run: python ci/check_wasapi_manual_tests.py build/windows-wasapi
       - run: ctest --preset windows-wasapi --output-junit "${{ github.workspace }}/junit-wasapi.xml"
@@ -141,7 +150,7 @@ jobs:
           arch: x64
       - run: python -m pip install 'cmake>=4.0,<5' ninja
       - run: python ci/fetch_asio_sdk.py --destination build/asio-sdk
-      - run: cmake --preset windows-wasapi-asan -DMKA_BUILD_ASIO=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
+      - run: cmake --preset windows-wasapi-asan -DMKA_BUILD_ASIO=ON -DMKA_BUILD_DIRECTSOUND=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
       - run: cmake --build --preset windows-wasapi-asan --parallel 2
       - name: Verify instrumentation and an isolated negative runtime witness
         run: ./ci/verify_msvc_asan.ps1

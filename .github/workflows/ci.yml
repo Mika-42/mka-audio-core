@@ -50,6 +50,8 @@ jobs:
       - uses: ./.github/actions/setup-build
       - name: Configure core without audio SDKs
         run: cmake --preset core
+      - run: python3 ci/check_directsound_platform.py
+      - run: python3 ci/check_directsound_build.py build/core --disabled
       - name: Build C++26
         run: cmake --build --preset core --parallel 2
       - name: Execute unit tests

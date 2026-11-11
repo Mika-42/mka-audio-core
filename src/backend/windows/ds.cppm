@@ -1,5 +1,5 @@
-//
-// Created by mika on 9/24/26.
-//
-
-export module ds;
+module;
+#include <windows.h>
+#include <dsound.h>
+export module mka.audio.backend.directsound;
+export import mka.audio.backend.abstract;
