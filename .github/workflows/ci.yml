@@ -52,6 +52,8 @@ jobs:
         run: cmake --preset core
       - name: Build C++26
         run: cmake --build --preset core --parallel 2
+      - name: Verify Core production build has no DSP dependency
+        run: python3 ci/check_core_boundary.py --build build/core
       - name: Execute unit tests
         run: ctest --preset core --output-junit "${{ github.workspace }}/junit-core.xml"
       - uses: actions/upload-artifact@v4
