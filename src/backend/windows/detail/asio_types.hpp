@@ -14,6 +14,7 @@ struct Request {
     std::uint32_t inputs, outputs, rate, frames;
     Sample sample;
 };
+struct LatencySnapshot {std::uint32_t input, output;};
 inline Failure failure(ASIOError error) noexcept {
     switch (error) {
         case ASE_OK: return Failure::none;

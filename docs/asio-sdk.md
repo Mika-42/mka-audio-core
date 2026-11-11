@@ -293,3 +293,51 @@ the final reader leaves. A failed close still consumes ownership and the next
 close completes Core's state transition. Normal double-close remains InvalidState.
 Repeated-cycle and adversarial mock tests verify interface/buffer counts, HWND
 destruction and balanced COM references independently of physical hardware.
+
+## Unit, hardware and audible validation (S06-18)
+
+The native Windows unit suite uses an IASIO mock and includes all five Core
+formats, input/output/duplex and exact 64/128/256-frame buffers. Allocation,
+invalidation, clock mismatch and cleanup tests run without physical hardware.
+The separate hardware suite uses real registered drivers, reports driver-provided
+latencies and observed callback intervals, and verifies progress and exact frozen
+configuration. These are not a measured analog round-trip latency. Missing driver
+or direction/configuration is an explicit SKIP; Wine is not hardware evidence.
+Hardware cases run serially to avoid competing for the same ASIO driver.
+
+From an MSVC developer PowerShell, point to the audited external SDK and build:
+
+```powershell
+$env:MKA_ASIO_SDK_DIR = 'C:/SDK/ASIOSDK'
+cmake --preset windows-asio
+cmake --build --preset windows-asio --parallel 2
+ctest --preset windows-asio
+ctest --test-dir build/windows-asio -L hardware --output-on-failure
+```
+
+The two audible tests are compiled but disabled by default and excluded from
+unit CI. Run one explicitly:
+
+```powershell
+./test/windows/asio/run_manual_asio.ps1 sine build/windows-asio
+./test/windows/asio/run_manual_asio.ps1 record build/windows-asio
+```
+
+Sine plays 440 Hz for three seconds at amplitude 0.2. Record captures five seconds,
+prints each channel's peak/RMS after removing DC, saves the raw WAV before gain,
+and rejects silence or non-finite audio. It immediately replays the strongest
+microphone channel to all requested outputs, with bounded gain and rate conversion.
+Capture and playback own the ASIO driver sequentially.
+
+Optional environment overrides are `MKA_TEST_ASIO_DEVICE` (stable `asio:{guid}`),
+`MKA_TEST_ASIO_INPUT_DEVICE`, `MKA_TEST_ASIO_OUTPUT_DEVICE`, `MKA_TEST_ASIO_RATE`,
+`MKA_TEST_ASIO_BUFFER`, `MKA_TEST_ASIO_INPUT_CHANNELS`, `MKA_TEST_ASIO_OUTPUT_CHANNELS`
+and `MKA_TEST_ASIO_CAPTURE_WAV`. Defaults select the first usable driver/direction,
+up to two channels, and prefer 48 kHz / 256 frames. Every opening remains exact;
+if a port combination is rejected, select its channels and driver explicitly.
+The default raw recording is `mka-asio-capture.wav` in the working directory.
+
+Hosted Windows CI compiles/discovers both audible cases and verifies their manual
+labels and disabled state. Unit MSVC/MinGW/ASan results and no-driver hardware
+SKIPs are reported separately; CI without a real ASIO device does not prove an
+audible or physical-device pass.

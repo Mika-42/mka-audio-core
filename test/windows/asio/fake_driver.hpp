@@ -20,7 +20,7 @@ public:
     ASIOError start() override;
     ASIOError stop() override;
     ASIOError getChannels(long* input, long* output) override;
-    ASIOError getLatencies(long* input, long* output) override { *input = 64; *output = 64; return ASE_OK; }
+    ASIOError getLatencies(long* input, long* output) override;
     ASIOError getBufferSize(long* min, long* max, long* preferred, long* granularity) override;
     ASIOError canSampleRate(ASIOSampleRate) override;
     ASIOError getSampleRate(ASIOSampleRate*) override;
@@ -92,6 +92,9 @@ struct DriverFixture {
     ASIOSampleRate changeRateOnStart = 0;
     bool throwOnStop = false, throwOnDispose = false, throwOnSetRate = false, throwOnRelease = false;
     bool throwOnCreate = false, throwOnInfo = false, throwOnInit = false;
+    ASIOError latencyResult = ASE_OK;
+    long inputLatency = 64, outputLatency = 64;
+    DWORD latencyThread = 0;
     bool acceptInit = true, nullInterface = false, partialFailure = false, sta = false, validWindow = false;
     unsigned live = 0, destroyed = 0, creates = 0, inits = 0, comAttempts = 0, comReferences = 0, uninitializes = 0;
     DWORD creationThread = 0, initThread = 0, releaseThread = 0, uninitializeThread = 0;
@@ -247,6 +250,10 @@ inline ASIOError FakeDriver::disposeBuffers() {
 inline ASIOError FakeDriver::getSamplePosition(ASIOSamples* position,ASIOTimeStamp* timestamp) {
     ++owner_.positionCalls; owner_.positionThread = GetCurrentThreadId();
     *position = owner_.reportedPosition; *timestamp = owner_.reportedTimestamp; return owner_.positionResult;
+}
+inline ASIOError FakeDriver::getLatencies(long* input,long* output) {
+    owner_.latencyThread = GetCurrentThreadId(); *input = owner_.inputLatency; *output = owner_.outputLatency;
+    return owner_.latencyResult;
 }
 inline ASIOError FakeDriver::start() {
     ++owner_.starts; owner_.startThread = GetCurrentThreadId();

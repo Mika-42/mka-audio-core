@@ -23,7 +23,9 @@
         "INSTALL_GTEST": "OFF",
         "MKA_SANITIZER": "none",
         "MKA_ENABLE_COVERAGE": "OFF",
-        "MKA_BUILD_WASAPI": "OFF"
+        "MKA_BUILD_WASAPI": "OFF",
+        "MKA_BUILD_ASIO": "OFF",
+        "MKA_BUILD_ASIO_SDK_TESTS": "OFF"
       }
     },
     {
@@ -78,6 +80,15 @@
       "cacheVariables": {
         "MKA_SANITIZER": "address"
       }
+    },
+    {
+      "name": "windows-asio",
+      "inherits": "windows-core",
+      "displayName": "Windows ASIO with external SDK",
+      "cacheVariables": {
+        "MKA_BUILD_ASIO": "ON",
+        "MKA_ASIO_SDK_DIR": "$env{MKA_ASIO_SDK_DIR}"
+      }
     }
   ],
   "buildPresets": [
@@ -111,6 +122,10 @@
     {
       "name": "windows-wasapi-asan",
       "configurePreset": "windows-wasapi-asan"
+    },
+    {
+      "name": "windows-asio",
+      "configurePreset": "windows-asio"
     }
   ],
   "testPresets": [
@@ -221,6 +236,22 @@
       },
       "environment": {
         "ASAN_OPTIONS": "halt_on_error=1"
+      }
+    },
+    {
+      "name": "windows-asio",
+      "configurePreset": "windows-asio",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "unit"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "jobs": 2
       }
     }
   ]

@@ -225,6 +225,14 @@ public:
     }
     const AudioBuffers& audioBuffers() const noexcept { return audio_; }
     TimingSnapshot timing() const noexcept { return processor_.timing(); }
+    std::optional<LatencySnapshot> latencies() {
+        if (!driver_) return {};
+        return control_.invoke([&]() -> std::optional<LatencySnapshot> {
+            long input = -1, output = -1;
+            if (driver_->getLatencies(&input,&output) != ASE_OK || input < 0 || output < 0) return {};
+            return LatencySnapshot{static_cast<std::uint32_t>(input),static_cast<std::uint32_t>(output)};
+        });
+    }
     void configureProcessing(ProcessingCallbacks callbacks) noexcept { processor_.configure(callbacks); }
     bool enableProcessing() noexcept {
         return CallbackRoute::publish(processor_) && processor_.enable();
