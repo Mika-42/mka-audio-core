@@ -87,7 +87,11 @@ endif()
 # Core library
 # ============================================================
 
+configure_file(cmake/build_config.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/mka/audio/build_config.hpp" @ONLY)
 add_library(mka-core-audio)
+target_include_directories(mka-core-audio PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
+    "$<INSTALL_INTERFACE:include>")
 
 target_sources(mka-core-audio
         PUBLIC
@@ -258,6 +262,7 @@ if (MKA_BUILD_TESTS)
     # --------------------------------------------------------
     add_executable(mka-core-audio-tests
             test/test_abstract_backend.cpp
+            test/test_backends.cpp
             test/test_backend_userdata.cpp
             test/test_backend_events.cpp
             test/test_backend_robustness.cpp
