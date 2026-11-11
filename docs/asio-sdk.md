@@ -240,3 +240,24 @@ is sign-extended, and big-endian stores use a fixed eight-byte stack buffer.
 Region/layout checks run before access. The other half, neighboring channel
 memory, and source Float32 samples remain untouched. All twelve native layouts
 are covered by allocation-free conversion tests; native start/stop follows next.
+
+## Native start and stop (S06-15)
+
+Start requires prepared resources and a healthy processor. It rechecks the exact
+clock, primes both output halves, fixes processing bindings, calls IASIO::start,
+then verifies the effective clock again before enabling DSP. SDK callbacks issued
+synchronously during start stay silent. A failed/partial start is stopped and
+remains reusable after successful rollback. No clock is renegotiated at start.
+
+Stop disables DSP, retires the route and drains readers before calling the native
+stop on its owner. A native error preserves the Core state for retry, with DSP
+disabled; destruction still attempts stop/dispose/clock restoration/Release.
+After a processing failure, close/open supplies a fresh frozen configuration.
+Successful stop is quiescent, and subsequent start reuses prepared resources.
+
+Output streams probe optional outputReady once before start. If supported it is
+called on the audio thread only after all native output conversion completes;
+an unexpected runtime failure reports Failed. Unsupported queries, including a
+misplaced ASIOFuture success code, do not enable the feature. Input-only streams
+never probe it. The SDK owns audio-thread scheduling, so Core realtime status
+remains Unknown rather than asserting an unverified priority.
