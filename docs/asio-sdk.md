@@ -227,3 +227,16 @@ Null/short/overflowing regions and inconsistent layouts are rejected before
 access. Input integer extrema and floating NaN/infinity behavior follow Core;
 source data and neighboring sample guards remain untouched. No conversion
 allocates, logs, waits or retains a callback view.
+
+## Playback conversion (S06-14)
+
+All Float32 output scratch is cleared before each user callback. The output hook
+then writes only the selected native half using Core writeChannel; unwritten
+channels/samples and a null callback therefore remain silent. Integer formats
+use Core's symmetric saturation at +/-1 and NaN-to-zero rule. Floating formats
+keep their range and infinities, with NaN written as zero. Right-aligned 24-in-32
+is sign-extended, and big-endian stores use a fixed eight-byte stack buffer.
+
+Region/layout checks run before access. The other half, neighboring channel
+memory, and source Float32 samples remain untouched. All twelve native layouts
+are covered by allocation-free conversion tests; native start/stop follows next.

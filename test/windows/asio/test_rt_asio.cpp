@@ -96,4 +96,26 @@ TEST(AsioRt, EveryNativeInputLayoutConvertsWithoutCxxAllocationOrRelease) {
     }
     EXPECT_EQ(calls,12000u);
 }
+TEST(AsioRt, EveryNativeOutputLayoutConvertsWithoutCxxAllocationOrRelease) {
+    DriverFixture fixture; ASIO backend;
+    const ASIOSampleType types[]{ASIOSTInt16LSB,ASIOSTInt16MSB,ASIOSTInt24LSB,ASIOSTInt24MSB,
+        ASIOSTInt32LSB24,ASIOSTInt32MSB24,ASIOSTInt32LSB,ASIOSTInt32MSB,
+        ASIOSTFloat32LSB,ASIOSTFloat32MSB,ASIOSTFloat64LSB,ASIOSTFloat64MSB};
+    for (const auto type : types) {
+        fixture.nativeFormat=type; const auto layout=*channelLayout(type); Format format=Format::Float32;
+        switch (layout.sample) {
+            case Sample::i16:format=Format::Int16;break;case Sample::i24:format=Format::Int24;break;
+            case Sample::i32:format=Format::Int32;break;case Sample::f32:format=Format::Float32;break;
+            case Sample::f64:format=Format::Float64;break;
+        }
+        ASSERT_TRUE(backend.open({driverId,Direction::Output,0,2,48000,format,256}));
+        activeDriver->configureProcessing({.process=+[](void*,const float* const*,std::uint32_t,float* const* output,std::uint32_t channels,std::uint32_t frames) noexcept {
+            for (unsigned channel=0;channel<channels;++channel) for (unsigned frame=0;frame<frames;++frame) output[channel][frame]=0.25f;
+        },.write=&writeSamples<Conversion>}); ASSERT_TRUE(activeDriver->enableProcessing());
+        std::size_t allocations=0,deallocations=0;
+        {wasapi_rt::Scope scope;for (unsigned block=0;block<1000;++block) fixture.callbacks.bufferSwitch(block%2,ASIOTrue);
+            allocations=scope.news();deallocations=scope.deletes();}
+        EXPECT_EQ(allocations,0u);EXPECT_EQ(deallocations,0u);ASSERT_TRUE(backend.close());
+    }
+}
 }

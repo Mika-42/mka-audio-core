@@ -44,4 +44,21 @@ bool readSamples(ChannelLayout layout,const std::byte* source,std::size_t capaci
     }
     return true;
 }
+template<class Convert>
+bool writeSamples(ChannelLayout layout,std::byte* target,std::size_t capacity,const float* input,std::size_t frames) noexcept {
+    if (!sampleRegion(layout,target,capacity,input,frames)) return false;
+    if (!frames) return true;
+    const auto core=conversionLayout<typename Convert::Layout>(layout);
+    if (!layout.bigEndian) {
+        Convert::write(core,target,layout.bytes,input,frames);
+    } else {
+        std::array<std::byte,8> little{};
+        for (std::size_t frame=0;frame<frames;++frame) {
+            Convert::write(core,little.data(),layout.bytes,input+frame,1);
+            for (std::size_t byte=0;byte<layout.bytes;++byte)
+                target[frame*layout.bytes+byte]=little[layout.bytes-1-byte];
+        }
+    }
+    return true;
+}
 }
