@@ -30,6 +30,17 @@ map to Core errors; failed cleanup consumes the native ownership once, even if
 the public `close()` reports an error. A failed `stop()` leaves the Core state
 Running until a retry succeeds or forced destruction quiesces the session.
 
+S07-03 discovers playback devices with `DirectSoundEnumerateW` only. Physical
+IDs are `directsound:output:{lowercase-guid}`. A null GUID supplied by Windows is
+the separate `directsound:output:default` alias, which follows the system default
+and is not a fixed physical device. Duplicate IDs are removed; devices sharing
+a name remain distinct. Names are copied from UTF-16 to UTF-8 with strict Unicode
+validation; absent labels use the ID or a default-device label. A native or
+callback error discards that enumeration rather than publishing a partial list.
+Discovery creates no audio stream. The output capability object identifies the
+direction, with zero channel bounds and empty lists until native capability
+probing is added in S07-05; these values do not promise any format support.
+
 DirectSound uses Windows I/O workers and does not offer a hard real-time
 guarantee. The application audio callback will still obey the Core contract:
 preallocated planar Float32 buffers, no allocation, blocking or logging.
