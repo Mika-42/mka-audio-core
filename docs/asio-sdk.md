@@ -278,3 +278,18 @@ ASIO. Core's dedicated non-RT dispatcher delivers Failed/XRun; the application
 then performs stop/close/open on its control thread. A reset received while Open
 prevents starting stale resources. All SDK callback forms share lifetime routing
 and only bounded atomics touch host status during notifications.
+
+## Final cleanup ownership (S06-17)
+
+Close consumes the native reference before cleanup calls and releases it with a
+scope guard on the original STA owner. Stop, one DisposeBuffers attempt, original
+clock restoration and Release are all attempted; the first native failure is
+preserved. Unexpected C++ exceptions from a driver are converted to failure
+without skipping later cleanup stages or releasing a reference twice.
+
+All four SDK callback forms are retired and drained before disposal, including
+notifications currently publishing Failed. Buffers/tables remain alive until
+the final reader leaves. A failed close still consumes ownership and the next
+close completes Core's state transition. Normal double-close remains InvalidState.
+Repeated-cycle and adversarial mock tests verify interface/buffer counts, HWND
+destruction and balanced COM references independently of physical hardware.
