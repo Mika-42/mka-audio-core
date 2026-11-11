@@ -2,6 +2,7 @@
 #include "fake_devices.hpp"
 #include <chrono>
 #include <future>
+#include "../../examples/dsp/gain.hpp"
 import mka.audio.backend.wasapi;
 #include "public_fixture.hpp"
 using namespace wasapi_test;
@@ -95,4 +96,24 @@ TEST_F(PublicFixture, FailedNativeStopAndResetKeepRunningGuardsUntilCleanupActua
         ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.setProcessFunction(nullptr));ASSERT_TRUE(backend.close());
     }
     d.Reset();
+}
+
+TEST_F(PublicFixture, SwitchesExactEndpointIdsAfterCloseAndReplacesFreedDspContext) {
+    auto first=add(L"output-a",eRender);auto second=add(L"output-b",eRender);
+    auto node=std::make_unique<mka_example::Gain>();Wasapi backend;
+    auto bind=[&]{return backend.setProcessFunction(+[](void* user,const AudioProcessContext& context) noexcept {
+        static_cast<mka_example::Gain*>(user)->process(context);
+    },node.get());};
+    ASSERT_TRUE(bind());ASSERT_TRUE(backend.open(config("output-a")));ASSERT_TRUE(backend.start());
+    SetEvent(first->client->audioEvent);ASSERT_TRUE(waitFor([&]{return node->calls.load()>0;}));
+    EXPECT_EQ(backend.open(config("output-b")).error(),ErrorType::InvalidState);
+    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
+    auto replacement=std::make_unique<mka_example::Gain>();node.reset();
+    EXPECT_EQ(backend.open(config("missing")).error(),ErrorType::EndpointUnavailable);
+    node=std::move(replacement);ASSERT_TRUE(bind());
+    ASSERT_TRUE(backend.open(config("output-b")));ASSERT_TRUE(backend.start());
+    SetEvent(second->client->audioEvent);ASSERT_TRUE(waitFor([&]{return node->calls.load()>0;}));
+    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
+    EXPECT_EQ(first->client->starts,1u);EXPECT_EQ(second->client->starts,1u);
+    first.Reset();second.Reset();
 }
