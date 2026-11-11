@@ -22,6 +22,7 @@ class Transport final:public Backend {
     Result close_() override {config_={};return {};}
 public:
     ~Transport() override {stopDispatcher();(void)stop();(void)close();}
+    void reportFault() noexcept {notifyXRun();notifyFailed();}
     void emit(std::uint32_t frames){
         if(!running_ || frames>64)return;
         for(auto& channel:outputs_)channel.fill(0);

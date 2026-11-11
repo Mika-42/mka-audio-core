@@ -107,6 +107,7 @@ target_sources(mka-core-audio
         src/core/endpoint.cppm
         src/core/constants.cppm
         src/core/error.cppm
+        src/core/diagnostics.cppm
         src/core/convert.cppm
         src/core/plateform.cppm
 )
@@ -595,7 +596,7 @@ if(MKA_BUILD_EXAMPLES)
 endif()
 
 if(MKA_BUILD_TESTS)
-    add_executable(mka-audio-dsp-tests test/integration/test_dsp.cpp)
+    add_executable(mka-audio-dsp-tests test/integration/test_dsp.cpp test/integration/test_diagnostics.cpp)
     target_link_libraries(mka-audio-dsp-tests PRIVATE mka-core-audio GTest::gtest_main)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND MKA_ALLOCATOR_TESTS)
         target_sources(mka-audio-dsp-tests PRIVATE test/integration/test_dsp_rt.cpp test/utils/alloc_probe.cpp)
