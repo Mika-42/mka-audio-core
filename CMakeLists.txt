@@ -141,7 +141,7 @@ if (MKA_BUILD_ALSA)
 
     target_compile_features(
             mka-audio-alsa
-            PRIVATE
+            PUBLIC
             cxx_std_${MKA_CXX_STANDARD}
     )
 
@@ -175,7 +175,7 @@ if (MKA_BUILD_PIPEWIRE)
 
     target_compile_features(
             mka-audio-pipewire
-            PRIVATE
+            PUBLIC
             cxx_std_${MKA_CXX_STANDARD}
     )
 
@@ -209,7 +209,7 @@ if (MKA_BUILD_JACK)
 
     target_compile_features(
             mka-audio-jack
-            PRIVATE
+            PUBLIC
             cxx_std_${MKA_CXX_STANDARD}
     )
 
@@ -243,7 +243,7 @@ if (MKA_BUILD_PULSEAUDIO)
 
     target_compile_features(
             mka-audio-pulseaudio
-            PRIVATE
+            PUBLIC
             cxx_std_${MKA_CXX_STANDARD}
     )
 
