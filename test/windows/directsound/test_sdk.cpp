@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <type_traits>
 #include <windows.h>
+#include <mmreg.h>
 #include <dsound.h>
 
 TEST(DirectSoundSdk, LinksNativeSdkEntryPointsAndGuidLibraryWithoutCreatingADevice) {
