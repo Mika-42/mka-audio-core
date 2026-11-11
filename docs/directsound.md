@@ -41,6 +41,12 @@ Discovery creates no audio stream. The output capability object identifies the
 direction, with zero channel bounds and empty lists until native capability
 probing is added in S07-05; these values do not promise any format support.
 
+S07-04 adds `DirectSoundCaptureEnumerateW` and `directsound:input:{guid}` /
+`directsound:input:default` identities. One list contains independently identified
+inputs and outputs. Equal GUIDs or names never establish a physical pairing or
+duplex support. Each direction is enumerated separately: unavailable capture
+does not hide playback, and unavailable playback does not hide capture.
+
 DirectSound uses Windows I/O workers and does not offer a hard real-time
 guarantee. The application audio callback will still obey the Core contract:
 preallocated planar Float32 buffers, no allocation, blocking or logging.
