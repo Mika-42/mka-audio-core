@@ -4,8 +4,6 @@
 #include <chrono>
 #include <cstdio>
 #include <expected>
-#include <format>
-#include <print>
 #include <thread>
 #include <tuple>
 #include "../../../src/backend/windows/detail/asio_driver.hpp"
@@ -30,7 +28,7 @@ TEST(AsioHardwareDiscovery, RegisteredDriversOrAnExplicitUnavailableSkip) {
     if (endpoints.empty()) GTEST_SKIP()<<"Aucun pilote ASIO enregistre sur cet hote Windows.";
     for (const auto& endpoint : endpoints) {
         EXPECT_EQ(endpoint.id.find("asio:{"),0u);EXPECT_FALSE(endpoint.name.empty());
-        std::println("Pilote ASIO : {} | {}",endpoint.id,endpoint.name);
+        std::printf("Pilote ASIO : %s | %s\n",endpoint.id.c_str(),endpoint.name.c_str());
     }
 }
 class AsioHardware : public ::testing::TestWithParam<std::tuple<Direction,std::uint32_t>> {};
@@ -52,8 +50,8 @@ TEST_P(AsioHardware, ExactNativeStreamsProgressAndReportDriverLatencyAndCadence)
     EXPECT_EQ(mka_asio_detail::activeDriver->outputLayouts().size(),config.outputChannels);
     EXPECT_EQ(mka_asio_detail::activeDriver->sampleRates(),(std::vector<std::uint32_t>{config.sampleRate}));
     if (const auto latency=mka_asio_detail::activeDriver->latencies())
-        std::println("Latence annoncee par le pilote : entree={} sortie={} frames",latency->input,latency->output);
-    else std::println("Latence annoncee par le pilote : indisponible");
+        std::printf("Latence annoncee par le pilote : entree=%u sortie=%u frames\n",latency->input,latency->output);
+    else std::puts("Latence annoncee par le pilote : indisponible");
     ASSERT_TRUE(backend.close());
     if (probe.count>1) {
         double minimum=1e30,maximum=0,total=0;
@@ -61,8 +59,9 @@ TEST_P(AsioHardware, ExactNativeStreamsProgressAndReportDriverLatencyAndCadence)
             const auto ms=std::chrono::duration<double,std::milli>(probe.arrivals[index]-probe.arrivals[index-1]).count();
             minimum=std::min(minimum,ms);maximum=std::max(maximum,ms);total+=ms;
         }
-        std::println("Cadence callbacks mesuree : min={:.3f} moyenne={:.3f} max={:.3f} ms ; {} frames, {} xruns",
-            minimum,total/(probe.count-1),maximum,probe.frames.load(),status.xruns);
+        std::printf("Cadence callbacks mesuree : min=%.3f moyenne=%.3f max=%.3f ms ; %llu frames, %llu xruns\n",
+            minimum,total/(probe.count-1),maximum,static_cast<unsigned long long>(probe.frames.load()),
+            static_cast<unsigned long long>(status.xruns));
     }
     EXPECT_FALSE(probe.invalid.load());EXPECT_FALSE(status.failed);EXPECT_EQ(status.xruns,0u);EXPECT_TRUE(progressed);
 }

@@ -6,9 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <expected>
-#include <format>
 #include <optional>
-#include <print>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -41,13 +39,13 @@ inline std::expected<std::uint32_t,std::string> numericEnv(const char* name,std:
                                                         std::uint32_t min,std::uint32_t max) {
     const char* raw=std::getenv(name);
     if (!raw || !*raw) {
-        if (fallback<min || fallback>max) return std::unexpected(std::format("Capacite native hors limites du test pour {}",name));
+        if (fallback<min || fallback>max) return std::unexpected(std::string("Capacite native hors limites du test pour ")+name);
         return fallback;
     }
     std::string_view text(raw);std::uint32_t value=0;
     const auto parsed=std::from_chars(text.data(),text.data()+text.size(),value);
     if (parsed.ec!=std::errc{} || parsed.ptr!=text.data()+text.size() || value<min || value>max)
-        return std::unexpected(std::format("{} invalide ({}..{})",name,min,max));
+        return std::unexpected(std::string(name)+" invalide ("+std::to_string(min)+".."+std::to_string(max)+")");
     return value;
 }
 struct Selection {EndpointConfig config;std::string name;};
@@ -82,17 +80,17 @@ inline std::expected<Selection,std::string> configuration(Direction direction,st
         if (!inputs) return std::unexpected(inputs.error());if (!outputs) return std::unexpected(outputs.error());
         return Selection{{endpoint.id,direction,*inputs,*outputs,*rate,format,forcedFrames?forcedFrames:*frames},endpoint.name};
     }
-    return std::unexpected(id&&*id?std::format("Pilote ASIO demande absent ou capacites incompatibles : {}",id)
+    return std::unexpected(id&&*id?std::string("Pilote ASIO demande absent ou capacites incompatibles : ")+id
         :"Aucun pilote ASIO utilisable pour cette direction/configuration. Verifier le SDK, le pilote et les autres applications audio.");
 }
 inline void describe(const Selection& selected) {
     const auto& c=selected.config;
-    std::println("ASIO : {}\n  ID={} | {} Hz | entrees={} sorties={} | {} | periode {} frames",
-        selected.name,c.id,c.sampleRate,c.inputChannels,c.outputChannels,formatName(c.format),c.bufferSize);
+    std::printf("ASIO : %s\n  ID=%s | %u Hz | entrees=%u sorties=%u | %s | periode %u frames\n",
+        selected.name.c_str(),c.id.c_str(),c.sampleRate,c.inputChannels,c.outputChannels,formatName(c.format),c.bufferSize);
 }
 inline bool open(ASIO& backend,const EndpointConfig& config) {
     const auto result=backend.open(config);
-    if (!result) std::println(stderr,"ASIO open : {}. Verifier le pilote selectionne, son panneau de controle et la configuration exacte.",errorName(result.error()));
+    if (!result) std::fprintf(stderr,"ASIO open : %s. Verifier le pilote selectionne, son panneau de controle et la configuration exacte.\n",errorName(result.error()));
     return bool(result);
 }
 template<class Predicate> bool wait(ASIO& backend,Predicate done,std::chrono::seconds timeout) {
