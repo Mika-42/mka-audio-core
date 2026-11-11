@@ -76,33 +76,46 @@ public:
         retireProcessing();
         try {
             return control_.invoke([&]() -> ASIOError {
-                ASIOError restored = ASE_OK;
-                if (potentialActive_) {
-                    restored = driver_->stop();
-                    if (restored == ASE_OK) potentialActive_ = false;
-                }
-                running_ = false;
-                if (buffersAttempted_) {
-                    buffersAttempted_ = false;
-                    buffersReady_ = false;
-                    const auto disposed = driver_->disposeBuffers();
-                    if (disposed == ASE_OK) potentialActive_ = false;
-                    if (restored == ASE_OK) restored = disposed;
-                }
-                if (originalRate_) {
-                    const auto rate = *originalRate_;
-                    originalRate_.reset();
-                    auto rateResult = driver_->setSampleRate(rate);
-                    if (rateResult == ASE_OK) {
-                        ASIOSampleRate actual = 0;
-                        rateResult = driver_->getSampleRate(&actual);
-                        if (rateResult == ASE_OK && actual != rate) rateResult = ASE_NoClock;
+                ASIOError first = ASE_OK;
+                {
+                    auto* owned = std::exchange(driver_,nullptr);
+                    struct Release {
+                        IASIO* sdk;
+                        ASIOError& first;
+                        ~Release() noexcept {
+                            try { sdk->Release(); }
+                            catch (...) { if (first == ASE_OK) first = ASE_HWMalfunction; }
+                        }
+                    } release{owned,first};
+                    // Continue all cleanup stages, even if a nonconforming SDK
+                    // throws. The first error is preserved and ownership is
+                    // consumed before any call that might unwind.
+                    auto attempt = [&](auto&& function) noexcept -> ASIOError {
+                        ASIOError error = ASE_HWMalfunction;
+                        try { error = function(); } catch (...) {}
+                        if (first == ASE_OK) first = error;
+                        return error;
+                    };
+                    if (potentialActive_)
+                        if (attempt([&] { return owned->stop(); }) == ASE_OK) potentialActive_ = false;
+                    running_ = false;
+                    if (std::exchange(buffersAttempted_,false)) {
+                        buffersReady_ = false;
+                        if (attempt([&] { return owned->disposeBuffers(); }) == ASE_OK) potentialActive_ = false;
                     }
-                    if (restored == ASE_OK) restored = rateResult;
+                    if (originalRate_) {
+                        const auto rate = *originalRate_;
+                        originalRate_.reset();
+                        attempt([&]() -> ASIOError {
+                            const auto set = owned->setSampleRate(rate);
+                            if (set != ASE_OK) return set;
+                            ASIOSampleRate actual = 0;
+                            const auto get = owned->getSampleRate(&actual);
+                            return get == ASE_OK && actual != rate ? ASE_NoClock : get;
+                        });
+                    }
                 }
-                auto* owned = std::exchange(driver_, nullptr);
-                owned->Release();
-                return restored;
+                return first;
             });
         } catch (...) { return ASE_HWMalfunction; }
     }

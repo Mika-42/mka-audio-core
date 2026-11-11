@@ -90,6 +90,8 @@ struct DriverFixture {
     std::atomic<unsigned> currentHalf{0};
     bool fireStartCallback = false, partialStart = false, runAudioThread = false;
     ASIOSampleRate changeRateOnStart = 0;
+    bool throwOnStop = false, throwOnDispose = false, throwOnSetRate = false, throwOnRelease = false;
+    bool throwOnCreate = false, throwOnInfo = false, throwOnInit = false;
     bool acceptInit = true, nullInterface = false, partialFailure = false, sta = false, validWindow = false;
     unsigned live = 0, destroyed = 0, creates = 0, inits = 0, comAttempts = 0, comReferences = 0, uninitializes = 0;
     DWORD creationThread = 0, initThread = 0, releaseThread = 0, uninitializeThread = 0;
@@ -138,9 +140,11 @@ inline HRESULT FakeDriver::QueryInterface(REFIID iid, void** out) {
 inline ULONG FakeDriver::Release() {
     const auto count = --references_;
     if (!count) {
+        const bool throws = owner_.throwOnRelease;
         stopWorker(); owner_.nativeRunning = false;
         owner_.storage.clear(); owner_.createdBuffers.clear();
         owner_.releaseThread = GetCurrentThreadId(); --owner_.live; ++owner_.destroyed; delete this;
+        if (throws) throw std::runtime_error("mock Release failure after releasing ownership");
     }
     return count;
 }
@@ -151,6 +155,7 @@ inline ASIOBool FakeDriver::init(void* window) {
     APTTYPE type{}; APTTYPEQUALIFIER qualifier{};
     owner_.sta = SUCCEEDED(CoGetApartmentType(&type, &qualifier))
         && (type == APTTYPE_STA || type == APTTYPE_MAINSTA);
+    if (owner_.throwOnInit) throw std::bad_alloc{};
     return owner_.acceptInit ? ASIOTrue : ASIOFalse;
 }
 inline void FakeDriver::getDriverName(char* name) { std::memcpy(name, "Test ASIO", 10); }
@@ -166,6 +171,7 @@ inline ASIOError FakeDriver::getBufferSize(long* min, long* max, long* preferred
     *granularity = owner_.granularity; return owner_.buffersResult;
 }
 inline ASIOError FakeDriver::getChannelInfo(ASIOChannelInfo* info) {
+    if (owner_.throwOnInfo) throw std::bad_alloc{};
     owner_.infoAtRate = owner_.currentRate;
     owner_.infoThread = GetCurrentThreadId();
     const bool input = info->isInput == ASIOTrue;
@@ -192,6 +198,7 @@ inline ASIOError FakeDriver::getSampleRate(ASIOSampleRate* out) {
 }
 inline ASIOError FakeDriver::setSampleRate(ASIOSampleRate rate) {
     owner_.rateThread = GetCurrentThreadId(); owner_.setRequests.push_back(rate);
+    if (owner_.throwOnSetRate) throw std::runtime_error("mock rate setter exception");
     if (!owner_.ignoreRateSet && (owner_.setResult == ASE_OK || owner_.mutateOnRateError)) owner_.currentRate = rate;
     return owner_.setResult;
 }
@@ -221,6 +228,7 @@ inline ASIOError FakeDriver::createBuffers(ASIOBufferInfo* infos, long count, lo
     if (owner_.changedBufferDirection) infos[0].isInput = infos[0].isInput ? ASIOFalse : ASIOTrue;
     if (owner_.wrappingPointer) infos[0].buffers[0] = reinterpret_cast<void*>(std::numeric_limits<std::uintptr_t>::max()-1);
     owner_.createdBuffers.assign(infos,infos+count);
+    if (owner_.throwOnCreate) throw std::bad_alloc{};
     if (owner_.fireColdCallbacks) {
         callbacks->bufferSwitch(0,ASIOTrue); callbacks->bufferSwitch(1,ASIOFalse);
         callbacks->sampleRateDidChange(owner_.currentRate);
@@ -230,6 +238,7 @@ inline ASIOError FakeDriver::createBuffers(ASIOBufferInfo* infos, long count, lo
 }
 inline ASIOError FakeDriver::disposeBuffers() {
     ++owner_.bufferDisposals; owner_.disposeThread = GetCurrentThreadId();
+    if (owner_.throwOnDispose) throw std::runtime_error("mock DisposeBuffers exception");
     if (owner_.disposeResult == ASE_OK) {
         stopWorker(); owner_.nativeRunning = false; owner_.storage.clear(); owner_.createdBuffers.clear();
     }
@@ -259,6 +268,7 @@ inline ASIOError FakeDriver::start() {
 }
 inline ASIOError FakeDriver::stop() {
     ++owner_.stops; owner_.stopThread = GetCurrentThreadId();
+    if (owner_.throwOnStop) throw std::runtime_error("mock Stop exception");
     if (owner_.stopResult == ASE_OK) { stopWorker(); owner_.nativeRunning = false; }
     return owner_.stopResult;
 }
