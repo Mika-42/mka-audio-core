@@ -10,6 +10,15 @@ struct ChannelLayout {
     bool low24In32 = false;
     bool operator==(const ChannelLayout&) const = default;
 };
+inline bool validChannelLayout(ChannelLayout layout) noexcept {
+    switch (layout.sample) {
+        case Sample::i16: return layout.bytes == 2 && !layout.low24In32;
+        case Sample::i24: return layout.low24In32 ? layout.bytes == 4 : layout.bytes == 3;
+        case Sample::i32: case Sample::f32: return layout.bytes == 4 && !layout.low24In32;
+        case Sample::f64: return layout.bytes == 8 && !layout.low24In32;
+    }
+    return false;
+}
 inline std::optional<ChannelLayout> channelLayout(ASIOSampleType type) noexcept {
     switch (type) {
         case ASIOSTInt16LSB: return ChannelLayout{Sample::i16, 2, false};

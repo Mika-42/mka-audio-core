@@ -3,6 +3,8 @@
 #include "fake_driver.hpp"
 #include "../rt_alloc.hpp"
 import mka.audio.backend.asio;
+import mka.audio.convert;
+#include "conversion_helpers.hpp"
 
 namespace {
 using namespace asio_test;
@@ -69,5 +71,29 @@ TEST(AsioRt, TimeInfoAndFallbackPositionDiagnosticsDoNotAllocateOrRelease) {
     } allocations=scope.news(); deallocations=scope.deletes();}
     EXPECT_EQ(allocations,0u); EXPECT_EQ(deallocations,0u); EXPECT_EQ(fixture.positionCalls,10000u);
     ASSERT_TRUE(backend.close());
+}
+TEST(AsioRt, EveryNativeInputLayoutConvertsWithoutCxxAllocationOrRelease) {
+    DriverFixture fixture; unsigned calls=0; ASIO backend;
+    const ASIOSampleType types[]{ASIOSTInt16LSB,ASIOSTInt16MSB,ASIOSTInt24LSB,ASIOSTInt24MSB,
+        ASIOSTInt32LSB24,ASIOSTInt32MSB24,ASIOSTInt32LSB,ASIOSTInt32MSB,
+        ASIOSTFloat32LSB,ASIOSTFloat32MSB,ASIOSTFloat64LSB,ASIOSTFloat64MSB};
+    for (const auto type : types) {
+        fixture.nativeFormat=type; const auto layout=*channelLayout(type); Format format=Format::Float32;
+        switch (layout.sample) {
+            case Sample::i16:format=Format::Int16;break; case Sample::i24:format=Format::Int24;break;
+            case Sample::i32:format=Format::Int32;break; case Sample::f32:format=Format::Float32;break;
+            case Sample::f64:format=Format::Float64;break;
+        }
+        ASSERT_TRUE(backend.open({driverId,Direction::Input,1,0,48000,format,256}));
+        activeDriver->configureProcessing({.user=&calls,
+            .process=+[](void* user,const float* const*,std::uint32_t,float* const*,std::uint32_t,std::uint32_t) noexcept {
+                ++*static_cast<unsigned*>(user);
+            },.read=&readSamples<Conversion>});
+        ASSERT_TRUE(activeDriver->enableProcessing()); std::size_t allocations=0,deallocations=0;
+        {wasapi_rt::Scope scope;for (unsigned block=0;block<1000;++block) fixture.callbacks.bufferSwitch(block%2,ASIOTrue);
+            allocations=scope.news();deallocations=scope.deletes();}
+        EXPECT_EQ(allocations,0u);EXPECT_EQ(deallocations,0u);ASSERT_TRUE(backend.close());
+    }
+    EXPECT_EQ(calls,12000u);
 }
 }

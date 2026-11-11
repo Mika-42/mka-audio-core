@@ -214,3 +214,16 @@ initialization and other control calls remain on the owner thread. A failed
 optional timing query clears diagnostic validity without suppressing audio.
 Non-RT readers obtain coherent atomic position/timestamp snapshots. Native
 unsigned high/low words are widened before combining, including zero and UINT64_MAX.
+
+## Capture conversion (S06-13)
+
+The input hook reads the selected native half into preallocated planar Float32
+scratch and passes const channel pointers to DSP. It reuses Core readChannel
+for Int16, packed Int24, right-aligned Int24-in-32, Int32 and Float32/64.
+Big-endian samples are reversed in a fixed eight-byte stack buffer. Int24-in-32
+uses the 24-bit scale, ignoring container padding instead of attenuating as S32.
+
+Null/short/overflowing regions and inconsistent layouts are rejected before
+access. Input integer extrema and floating NaN/infinity behavior follow Core;
+source data and neighboring sample guards remain untouched. No conversion
+allocates, logs, waits or retains a callback view.

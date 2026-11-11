@@ -176,4 +176,16 @@ TEST(AsioHooks, NativeNotificationsReachOnlyTheBoundInstanceStatus) {
     EXPECT_EQ(second.status().xruns,0u); EXPECT_FALSE(second.status().failed);
     ASSERT_TRUE(first.stop()); ASSERT_TRUE(first.close()); ASSERT_TRUE(second.stop()); ASSERT_TRUE(second.close());
 }
+TEST(AsioHooks, PublicProcessingBindingsUseTheCoreInputConverter) {
+    Mock mock; ASIO backend; auto cfg=config(); cfg.direction=Direction::Input;
+    cfg.inputChannels=1; cfg.outputChannels=0; cfg.format=Format::Int24; cfg.bufferSize=3;
+    ASSERT_TRUE(backend.open(cfg)); ASSERT_TRUE(backend.start()); ASSERT_NE(mock.processing.read,nullptr);
+    const std::byte source[]{std::byte{0},std::byte{0},std::byte{0x80},std::byte{0xa5},
+        std::byte{0},std::byte{0},std::byte{0x40},std::byte{0},
+        std::byte{0xff},std::byte{0xff},std::byte{0x7f},std::byte{0}};
+    float output[3]{};
+    ASSERT_TRUE(mock.processing.read({Sample::i24,4,false,true},source,sizeof(source),output,3));
+    EXPECT_FLOAT_EQ(output[0],-1); EXPECT_FLOAT_EQ(output[1],0.5f); EXPECT_FLOAT_EQ(output[2],8388607.0f/8388608.0f);
+    ASSERT_TRUE(backend.stop()); ASSERT_TRUE(backend.close());
+}
 }
