@@ -1498,3 +1498,14 @@ selection requires a separate portable API decision and is not silently enabled.
 For direct ALSA sine/record-and-replay tests, use the separate audio test executable
 and explicit input/output PCMs. See [manual ALSA diagnosis](docs/manual-alsa.md)
 for commands, signal levels, bounded waits and hardware mixer/ownership checks.
+
+On macOS, use CMake 4+, Ninja and upstream LLVM (`brew install llvm ninja cmake`).
+AppleClang currently lacks CMake's required named-module dependency scanning;
+configuration reports this limitation rather than disabling module validation.
+The `macos-core` preset requires no audio SDK and uses the same C++26 core tests:
+
+```sh
+CXX="$(brew --prefix llvm)/bin/clang++" cmake --preset macos-core
+cmake --build --preset macos-core --parallel 2
+ctest --preset macos-core
+```
