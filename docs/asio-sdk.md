@@ -261,3 +261,20 @@ an unexpected runtime failure reports Failed. Unsupported queries, including a
 misplaced ASIOFuture success code, do not enable the feature. Input-only streams
 never probe it. The SDK owns audio-thread scheduling, so Core realtime status
 remains Unknown rather than asserting an unverified priority.
+
+## Driver notifications and frozen configuration (S06-16)
+
+Reset requests and resync invalidate the processor and report Failed once;
+resync also counts an XRun. Overloads count XRuns without stopping an otherwise
+valid stream. A changed, unknown or non-finite sample rate, or TimeInfo rate/clock
+change, invalidates the frozen configuration. An unchanged rate notification is
+harmless. No notification calls native stop, dispose, reinitialization or rate
+setters from the callback.
+
+The host does not advertise live buffer-size/latency renegotiation. An unsolicited
+change is rejected (return zero) and invalidates the stream for a controlled
+reopen. Reset/resync return acceptance of the deferred request, as specified by
+ASIO. Core's dedicated non-RT dispatcher delivers Failed/XRun; the application
+then performs stop/close/open on its control thread. A reset received while Open
+prevents starting stale resources. All SDK callback forms share lifetime routing
+and only bounded atomics touch host status during notifications.
