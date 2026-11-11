@@ -9,6 +9,9 @@ struct Conversion {
     static void read(Layout layout,const std::byte* source,std::size_t stride,float* output,std::size_t frames) noexcept {
         mka::audio::convert::readChannel(layout,source,stride,output,frames);
     }
+    static void write(Layout layout,std::byte* target,std::size_t stride,const float* input,std::size_t frames) noexcept {
+        mka::audio::convert::writeChannel(layout,target,stride,input,frames);
+    }
 };
 inline std::vector<std::byte> encodedSamples(const std::vector<std::uint64_t>& values,ChannelLayout layout) {
     std::vector<std::byte> result(values.size()*layout.bytes);

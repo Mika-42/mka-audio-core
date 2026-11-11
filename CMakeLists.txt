@@ -536,7 +536,7 @@ if(MKA_BUILD_ASIO)
             test/windows/asio/test_driver.cpp test/windows/asio/test_control.cpp test/windows/asio/test_channels.cpp
             test/windows/asio/test_buffer_limits.cpp test/windows/asio/test_channel_layout.cpp test/windows/asio/test_rates.cpp
             test/windows/asio/test_audio_buffers.cpp test/windows/asio/test_processing.cpp test/windows/asio/test_timing.cpp
-            test/windows/asio/test_input_convert.cpp)
+            test/windows/asio/test_input_convert.cpp test/windows/asio/test_output_convert.cpp)
         if(MKA_ALLOCATOR_TESTS)
             target_sources(mka-audio-asio-native-tests PRIVATE test/windows/rt_alloc.cpp test/windows/asio/test_rt_asio.cpp)
         endif()

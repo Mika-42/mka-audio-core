@@ -188,4 +188,12 @@ TEST(AsioHooks, PublicProcessingBindingsUseTheCoreInputConverter) {
     EXPECT_FLOAT_EQ(output[0],-1); EXPECT_FLOAT_EQ(output[1],0.5f); EXPECT_FLOAT_EQ(output[2],8388607.0f/8388608.0f);
     ASSERT_TRUE(backend.stop()); ASSERT_TRUE(backend.close());
 }
+TEST(AsioHooks, PublicProcessingBindingsUseTheCoreOutputConverter) {
+    Mock mock; ASIO backend; ASSERT_TRUE(backend.open(config())); ASSERT_TRUE(backend.start());
+    ASSERT_NE(mock.processing.write,nullptr); std::byte output[8]{}; const float input[]{-1,1};
+    ASSERT_TRUE(mock.processing.write({Sample::i24,4,true,true},output,sizeof(output),input,2));
+    const std::byte expected[]{std::byte{0xff},std::byte{0x80},std::byte{0},std::byte{1},
+        std::byte{0},std::byte{0x7f},std::byte{0xff},std::byte{0xff}};
+    EXPECT_EQ(std::memcmp(output,expected,sizeof(output)),0); ASSERT_TRUE(backend.stop()); ASSERT_TRUE(backend.close());
+}
 }

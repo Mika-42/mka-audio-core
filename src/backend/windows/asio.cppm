@@ -54,6 +54,9 @@ private:
         static void read(Layout layout,const std::byte* source,std::size_t stride,float* output,std::size_t frames) noexcept {
             mka::audio::convert::readChannel(layout,source,stride,output,frames);
         }
+        static void write(Layout layout,std::byte* target,std::size_t stride,const float* input,std::size_t frames) noexcept {
+            mka::audio::convert::writeChannel(layout,target,stride,input,frames);
+        }
     };
     mka_asio_detail::ProcessingCallbacks processCallbacks() noexcept {
         return {.user=this,
@@ -63,6 +66,7 @@ private:
                     self.callback(self.userData,AudioProcessContext{{input,inputs},{output,outputs},frames});
                 } : nullptr,
             .read=&mka_asio_detail::readSamples<Conversion>,
+            .write=&mka_asio_detail::writeSamples<Conversion>,
             .xrun=+[](void* user) noexcept { static_cast<ASIO*>(user)->notifyXRun(); },
             .failed=+[](void* user) noexcept { static_cast<ASIO*>(user)->notifyFailed(); }};
     }
