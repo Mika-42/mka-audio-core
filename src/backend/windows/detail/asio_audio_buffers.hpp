@@ -98,6 +98,4 @@ private:
     std::vector<float*> outputChannels_;
 };
 inline void coldRateChanged(ASIOSampleRate) noexcept {}
-inline long coldMessage(long selector, long, void*, double*) noexcept { return selector == kAsioEngineVersion ? 2 : 0; }
-inline ASIOTime* coldTimeInfo(ASIOTime* info, long, ASIOBool) noexcept { return info; }
 }
