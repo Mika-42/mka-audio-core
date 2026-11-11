@@ -24,18 +24,8 @@ public:
         for (const auto count : {request.inputs, request.outputs})
             if (count && (request.frames > std::numeric_limits<std::uint32_t>::max() / sizeof(float) / count
                 || request.frames > std::numeric_limits<std::size_t>::max() / sizeof(float) / count)) return Failure::buffer;
-        auto valid = [&](const ChannelLayout& layout) {
-            if (layout.sample != request.sample) return false;
-            switch (layout.sample) {
-                case Sample::i16: return layout.bytes == 2 && !layout.low24In32;
-                case Sample::i24: return layout.low24In32 ? layout.bytes == 4 : layout.bytes == 3;
-                case Sample::i32: case Sample::f32: return layout.bytes == 4 && !layout.low24In32;
-                case Sample::f64: return layout.bytes == 8 && !layout.low24In32;
-            }
-            return false;
-        };
         for (const auto& group : {&inputs, &outputs}) for (const auto& layout : *group)
-            if (!valid(layout)) return Failure::format;
+            if (layout.sample != request.sample || !validChannelLayout(layout)) return Failure::format;
         frames_ = request.frames; inputs_ = request.inputs; outputs_ = request.outputs;
         layouts_ = inputs; layouts_.insert(layouts_.end(), outputs.begin(), outputs.end());
         infos_.resize(static_cast<std::size_t>(channels));

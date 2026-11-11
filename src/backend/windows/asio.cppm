@@ -2,9 +2,11 @@ module;
 #include <expected>
 #include <optional>
 #include <vector>
+#include "detail/asio_convert.hpp"
 #include "detail/asio_host.hpp"
 export module mka.audio.backend.asio;
 export import mka.audio.backend.abstract;
+import mka.audio.convert;
 
 export namespace mka::audio::core {
 class ASIO final : public Backend {
@@ -47,6 +49,12 @@ protected:
     Result stop_() override { return result(session_.stop()); }
     Result close_() override { return result(session_.close()); }
 private:
+    struct Conversion {
+        using Layout=mka::audio::convert::Layout;
+        static void read(Layout layout,const std::byte* source,std::size_t stride,float* output,std::size_t frames) noexcept {
+            mka::audio::convert::readChannel(layout,source,stride,output,frames);
+        }
+    };
     mka_asio_detail::ProcessingCallbacks processCallbacks() noexcept {
         return {.user=this,
             .process=callback ? +[](void* user,const float* const* input,std::uint32_t inputs,
@@ -54,6 +62,7 @@ private:
                     auto& self=*static_cast<ASIO*>(user);
                     self.callback(self.userData,AudioProcessContext{{input,inputs},{output,outputs},frames});
                 } : nullptr,
+            .read=&mka_asio_detail::readSamples<Conversion>,
             .xrun=+[](void* user) noexcept { static_cast<ASIO*>(user)->notifyXRun(); },
             .failed=+[](void* user) noexcept { static_cast<ASIO*>(user)->notifyFailed(); }};
     }
