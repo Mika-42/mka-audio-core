@@ -1479,6 +1479,13 @@ the device stops signaling audio events; it never calls DSP from a timeout.
 Temporary BUFFER_ERROR and capture discontinuities count as xruns. Stop/close
 still release an invalidated stream, and a new start resets native failure state.
 
+The Windows suite includes the public WASAPI error/status/event contract, 1,000
+complete lifecycle cycles, controlled SDK failures, C++ allocation probes and
+separate hardware cases. See [WASAPI validation](docs/sprint05-validation.md).
+`windows-wasapi-asan` selects MSVC AddressSanitizer (`MKA_SANITIZER=address`),
+without incompatible runtime checks or allocator interposition. The CI validates
+its flags and a negative runtime witness; it does not claim Windows UBSan/TSan/LSan.
+
 For direct ALSA sine/record-and-replay tests, use the separate audio test executable
 and explicit input/output PCMs. See [manual ALSA diagnosis](docs/manual-alsa.md)
 for commands, signal levels, bounded waits and hardware mixer/ownership checks.

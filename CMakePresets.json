@@ -70,6 +70,14 @@
       "cacheVariables": {
         "MKA_BUILD_WASAPI": "ON"
       }
+    },
+    {
+      "name": "windows-wasapi-asan",
+      "inherits": "windows-wasapi",
+      "displayName": "MSVC AddressSanitizer WASAPI tests",
+      "cacheVariables": {
+        "MKA_SANITIZER": "address"
+      }
     }
   ],
   "buildPresets": [
@@ -99,6 +107,10 @@
     {
       "name": "windows-wasapi",
       "configurePreset": "windows-wasapi"
+    },
+    {
+      "name": "windows-wasapi-asan",
+      "configurePreset": "windows-wasapi-asan"
     }
   ],
   "testPresets": [
@@ -190,6 +202,25 @@
       "execution": {
         "noTestsAction": "error",
         "jobs": 2
+      }
+    },
+    {
+      "name": "windows-wasapi-asan",
+      "configurePreset": "windows-wasapi-asan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "^unit$"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "jobs": 2
+      },
+      "environment": {
+        "ASAN_OPTIONS": "halt_on_error=1"
       }
     }
   ]
