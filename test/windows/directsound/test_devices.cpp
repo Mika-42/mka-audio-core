@@ -16,10 +16,10 @@ struct Entry { GUID guid; const wchar_t* name; bool isDefault = false; };
 struct Discovery {
     inline static Discovery* current = nullptr;
     DiscoveryApi api;
-    std::vector<Entry> entries;
-    HRESULT result = DS_OK;
-    unsigned calls = 0, accepted = 0;
-    DWORD thread = 0;
+    std::vector<Entry> entries, inputEntries;
+    HRESULT result = DS_OK, inputResult = DS_OK;
+    unsigned calls = 0, accepted = 0, inputCalls = 0, inputAccepted = 0;
+    DWORD thread = 0, inputThread = 0;
     static HRESULT WINAPI enumerate(LPDSENUMCALLBACKW callback, LPVOID context) {
         auto& mock = *current; ++mock.calls; mock.thread = GetCurrentThreadId();
         for (auto& entry : mock.entries) {
@@ -28,8 +28,16 @@ struct Discovery {
         }
         return mock.result;
     }
+    static HRESULT WINAPI enumerateInput(LPDSENUMCALLBACKW callback, LPVOID context) {
+        auto& mock = *current; ++mock.inputCalls; mock.inputThread = GetCurrentThreadId();
+        for (auto& entry : mock.inputEntries) {
+            if (!callback(entry.isDefault ? nullptr : &entry.guid, entry.name, L"mock-capture.dll", context)) break;
+            ++mock.inputAccepted;
+        }
+        return mock.inputResult;
+    }
     Discovery() {
-        current = this; api.enumerateOutput = &enumerate; testDiscoveryOverride = &api;
+        current = this; api.enumerateOutput = &enumerate; api.enumerateInput = &enumerateInput; testDiscoveryOverride = &api;
     }
     ~Discovery() { testDiscoveryOverride = nullptr; current = nullptr; }
 };
@@ -132,5 +140,79 @@ TEST(DirectSoundDiscovery, StrictUtf16ConversionRejectsInvalidSurrogates) {
     EXPECT_FALSE(utf8Name(nullptr)); EXPECT_FALSE(utf8Name(L""));
     const wchar_t invalid[]{wchar_t(0xdc00), 0}; EXPECT_FALSE(utf8Name(invalid));
     const auto text = utf8Name(L"\u03a9"); ASSERT_TRUE(text); EXPECT_EQ(*text, "\xce\xa9");
+}
+
+TEST(DirectSoundCaptureDiscovery, InputOnlyMetadataUsesItsOwnDirectionAndUtf8Label) {
+    Discovery mock; mock.inputEntries = {{firstGuid, L"Microphone \u03a9"}};
+    DirectSound backend; const auto endpoints = backend.getEndPoints(); ASSERT_EQ(endpoints.size(), 1u);
+    EXPECT_EQ(endpoints[0].id, "directsound:input:{12345678-9abc-def0-1234-56789abcdef0}");
+    EXPECT_EQ(endpoints[0].name, "Microphone \xce\xa9"); ASSERT_TRUE(endpoints[0].input); EXPECT_FALSE(endpoints[0].output);
+    EXPECT_TRUE(endpoints[0].input->formats.empty()); EXPECT_TRUE(endpoints[0].input->sampleRates.empty());
+    EXPECT_EQ(mock.inputCalls, 1u); EXPECT_EQ(mock.inputThread, GetCurrentThreadId());
+}
+
+TEST(DirectSoundCaptureDiscovery, EqualGuidsRemainIndependentInputAndOutputEndpoints) {
+    Discovery mock; mock.entries = {{firstGuid, L"Output"}}; mock.inputEntries = {{firstGuid, L"Input"}};
+    DirectSound backend; const auto endpoints = backend.getEndPoints(); ASSERT_EQ(endpoints.size(), 2u);
+    EXPECT_NE(endpoints[0].id, endpoints[1].id);
+    EXPECT_TRUE(endpoints[0].output); EXPECT_FALSE(endpoints[0].input);
+    EXPECT_TRUE(endpoints[1].input); EXPECT_FALSE(endpoints[1].output);
+}
+
+TEST(DirectSoundCaptureDiscovery, HomonymousDistinctDevicesAreNotPaired) {
+    Discovery mock; mock.entries = {{firstGuid, L"Same"}}; mock.inputEntries = {{secondGuid, L"Same"}};
+    DirectSound backend; const auto endpoints = backend.getEndPoints(); ASSERT_EQ(endpoints.size(), 2u);
+    EXPECT_EQ(endpoints[0].name, endpoints[1].name); EXPECT_NE(endpoints[0].id, endpoints[1].id);
+    EXPECT_FALSE(endpoints[0].input); EXPECT_FALSE(endpoints[1].output);
+}
+
+TEST(DirectSoundCaptureDiscovery, DefaultAliasesAndMissingLabelsRemainDirectionSpecific) {
+    Discovery mock; mock.entries = {{{}, nullptr, true}}; mock.inputEntries = {{{}, nullptr, true}};
+    DirectSound backend; const auto endpoints = backend.getEndPoints(); ASSERT_EQ(endpoints.size(), 2u);
+    EXPECT_EQ(endpoints[0].id, "directsound:output:default"); EXPECT_EQ(endpoints[0].name, "Default DirectSound output");
+    EXPECT_EQ(endpoints[1].id, "directsound:input:default"); EXPECT_EQ(endpoints[1].name, "Default DirectSound input");
+}
+
+TEST(DirectSoundCaptureDiscovery, CaptureFailureNeverHidesAvailableOutputs) {
+    Discovery mock; mock.entries = {{firstGuid, L"Output"}}; mock.inputEntries = {{secondGuid, L"Partial input"}};
+    mock.inputResult = DSERR_NODRIVER;
+    DirectSound backend; const auto endpoints = backend.getEndPoints(); ASSERT_EQ(endpoints.size(), 1u);
+    EXPECT_TRUE(endpoints[0].output); EXPECT_FALSE(endpoints[0].input); EXPECT_EQ(mock.inputAccepted, 1u);
+}
+
+TEST(DirectSoundCaptureDiscovery, PlaybackFailureNeverHidesAvailableInputs) {
+    Discovery mock; mock.entries = {{firstGuid, L"Partial output"}}; mock.result = DSERR_NODRIVER;
+    mock.inputEntries = {{secondGuid, L"Input"}};
+    DirectSound backend; const auto endpoints = backend.getEndPoints(); ASSERT_EQ(endpoints.size(), 1u);
+    EXPECT_TRUE(endpoints[0].input); EXPECT_FALSE(endpoints[0].output);
+}
+
+TEST(DirectSoundCaptureDiscovery, InvalidUnicodeDiscardsOnlyTheFailedCaptureEnumeration) {
+    const wchar_t invalid[]{wchar_t(0xd800), 0};
+    Discovery mock; mock.entries = {{firstGuid, L"Output"}};
+    mock.inputEntries = {{firstGuid, L"Partial input"}, {secondGuid, invalid}};
+    DirectSound backend; const auto endpoints = backend.getEndPoints(); ASSERT_EQ(endpoints.size(), 1u);
+    EXPECT_TRUE(endpoints[0].output); EXPECT_FALSE(endpoints[0].input); EXPECT_EQ(mock.inputAccepted, 1u);
+}
+
+TEST(DirectSoundCaptureDiscovery, DuplicateCaptureIdsAreRemovedWithoutMergingDifferentGuids) {
+    Discovery mock; mock.inputEntries = {{firstGuid, L"Same"}, {firstGuid, L"Duplicate"},
+        {secondGuid, L"Same"}, {{}, L"Invalid physical GUID"}};
+    DirectSound backend; const auto endpoints = backend.getEndPoints(); ASSERT_EQ(endpoints.size(), 2u);
+    EXPECT_EQ(endpoints[0].name, "Same"); EXPECT_EQ(endpoints[1].name, "Same"); EXPECT_NE(endpoints[0].id, endpoints[1].id);
+    for (const auto& endpoint : endpoints) { EXPECT_TRUE(endpoint.input); EXPECT_FALSE(endpoint.output); }
+}
+
+TEST(DirectSoundCaptureDiscovery, MissingCaptureEnumeratorKeepsOutputDiscoveryAvailable) {
+    Discovery mock; mock.api.enumerateInput = nullptr; mock.entries = {{firstGuid, L"Output"}};
+    DirectSound backend; const auto endpoints = backend.getEndPoints(); ASSERT_EQ(endpoints.size(), 1u);
+    EXPECT_EQ(mock.inputCalls, 0u); EXPECT_TRUE(endpoints[0].output);
+}
+
+TEST(DirectSoundCaptureDiscovery, DeviceRemovalChangesOnlyNewSnapshots) {
+    Discovery mock; mock.inputEntries = {{firstGuid, L"Input"}}; DirectSound backend;
+    const auto snapshot = backend.getEndPoints(); ASSERT_EQ(snapshot.size(), 1u);
+    mock.inputEntries.clear(); EXPECT_TRUE(backend.getEndPoints().empty());
+    EXPECT_EQ(snapshot[0].name, "Input"); EXPECT_EQ(snapshot[0].id, deviceId(&firstGuid, Flow::input));
 }
 }

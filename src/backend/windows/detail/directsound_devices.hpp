@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <atomic>
+#include <iterator>
 #include <limits>
 #include <string_view>
 #include "directsound_ids.hpp"
@@ -8,6 +9,7 @@
 namespace mka_ds_detail {
 struct DiscoveryApi {
     decltype(&DirectSoundEnumerateW) enumerateOutput = &DirectSoundEnumerateW;
+    decltype(&DirectSoundCaptureEnumerateW) enumerateInput = &DirectSoundCaptureEnumerateW;
 };
 #if defined(MKA_DIRECTSOUND_TESTING)
 inline std::atomic<const DiscoveryApi*> testDiscoveryOverride{nullptr};
@@ -45,7 +47,7 @@ inline BOOL CALLBACK collectDevice(LPGUID guid, LPCWSTR description, LPCWSTR, LP
         if (id.empty()) return TRUE; // A supplied zero GUID is not a physical identity.
         if (std::any_of(scan.devices.begin(), scan.devices.end(), [&](const Device& device) { return device.id == id; })) return TRUE;
         auto label = description && *description ? utf8Name(description)
-            : std::optional<std::string>(guid ? id : "Default DirectSound output");
+            : std::optional<std::string>(guid ? id : scan.flow == Flow::input ? "Default DirectSound input" : "Default DirectSound output");
         if (!label) { scan.failed = true; return FALSE; }
         Device device{id, std::move(*label), std::nullopt, std::nullopt};
         // Presence identifies the direction, with no unverified channel/rate list.
@@ -58,13 +60,19 @@ inline BOOL CALLBACK collectDevice(LPGUID guid, LPCWSTR description, LPCWSTR, LP
         return FALSE; // Never unwind through the Windows callback ABI.
     }
 }
-inline std::vector<Device> nativeDevices() {
-    const auto api = defaultDiscoveryApi();
-    if (!api.enumerateOutput) return {};
-    Enumeration scan{Flow::output};
+inline std::vector<Device> enumerateDirection(decltype(&DirectSoundEnumerateW) enumerate, Flow flow) {
+    if (!enumerate) return {};
+    Enumeration scan{flow};
     // Windows can return success after the callback returned FALSE. Retain our
     // own failure flag so a callback failure cannot expose a partial snapshot.
-    if (FAILED(api.enumerateOutput(&collectDevice, &scan)) || scan.failed) return {};
+    if (FAILED(enumerate(&collectDevice, &scan)) || scan.failed) return {};
     return std::move(scan.devices);
+}
+inline std::vector<Device> nativeDevices() {
+    const auto api = defaultDiscoveryApi();
+    auto result = enumerateDirection(api.enumerateOutput, Flow::output);
+    auto input = enumerateDirection(api.enumerateInput, Flow::input);
+    result.insert(result.end(), std::make_move_iterator(input.begin()), std::make_move_iterator(input.end()));
+    return result;
 }
 }
