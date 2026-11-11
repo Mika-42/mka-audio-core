@@ -35,8 +35,17 @@ option(MKA_BUILD_PULSEAUDIO
 )
 
 option(MKA_BUILD_WASAPI "Build the Windows WASAPI backend" ${WIN32})
+option(MKA_BUILD_ASIO_SDK_TESTS "Validate a separately supplied ASIO SDK on Windows" OFF)
+set(MKA_ASIO_SDK_DIR "" CACHE PATH "Audited ASIOSDK directory; see docs/asio-sdk.md")
 if(MKA_BUILD_WASAPI AND NOT WIN32)
     message(FATAL_ERROR "MKA_BUILD_WASAPI requires a Windows target and Windows SDK")
+endif()
+if(MKA_BUILD_ASIO_SDK_TESTS AND (NOT WIN32 OR NOT MKA_BUILD_TESTS))
+    message(FATAL_ERROR "MKA_BUILD_ASIO_SDK_TESTS requires Windows and MKA_BUILD_TESTS=ON")
+endif()
+if(MKA_BUILD_ASIO_SDK_TESTS)
+    include(cmake/AsioSdk.cmake)
+    mka_validate_asio_sdk("${MKA_ASIO_SDK_DIR}" mka_asio_sdk_root)
 endif()
 
 
@@ -504,6 +513,23 @@ if(MKA_BUILD_WASAPI)
         endif()
         gtest_discover_tests(mka-audio-wasapi-tests TEST_PREFIX "wasapi.")
     endif()
+endif()
+
+if(MKA_BUILD_ASIO_SDK_TESTS)
+    add_executable(mka-asio-sdk-tests test/windows/asio/test_sdk.cpp)
+    target_include_directories(mka-asio-sdk-tests PRIVATE "${mka_asio_sdk_root}/common")
+    target_link_libraries(mka-asio-sdk-tests PRIVATE mka-core-audio GTest::gtest_main)
+    target_compile_definitions(mka-asio-sdk-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    gtest_discover_tests(mka-asio-sdk-tests TEST_PREFIX "asio.sdk.")
+    add_test(NAME asio.sdk.ConfigurationValidation COMMAND "${CMAKE_COMMAND}"
+        "-DASIO_MODULE=${PROJECT_SOURCE_DIR}/cmake/AsioSdk.cmake"
+        "-DSDK_ROOT=${mka_asio_sdk_root}" "-DWORK=${PROJECT_BINARY_DIR}/asio-sdk-validation"
+        -P "${PROJECT_SOURCE_DIR}/test/cmake/asio_sdk.cmake")
+    set_tests_properties(asio.sdk.ConfigurationValidation PROPERTIES LABELS "unit;asio;nonrt" TIMEOUT 30)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME asio.sdk.DownloadValidation COMMAND "${Python3_EXECUTABLE}"
+        "${PROJECT_SOURCE_DIR}/test/ci/test_fetch_asio_sdk.py")
+    set_tests_properties(asio.sdk.DownloadValidation PROPERTIES LABELS "unit;asio;nonrt" TIMEOUT 30)
 endif()
 
 if(MKA_BUILD_TESTS)
