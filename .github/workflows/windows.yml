@@ -11,6 +11,15 @@ concurrency:
   cancel-in-progress: true
 jobs:
   windows-mingw15:
+    name: windows-mingw15-${{ matrix.profile }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: debug
+            build_type: Debug
+          - profile: release
+            build_type: Release
     runs-on: windows-2022
     timeout-minutes: 20
     env:
@@ -41,27 +50,19 @@ jobs:
           if ((g++ -dumpmachine) -ne 'x86_64-w64-mingw32') { throw 'A Windows MinGW target is required' }
           g++ --version
       - run: python ci/fetch_asio_sdk.py --destination build/asio-sdk
-      - run: cmake --preset core -B build/windows-mingw15 -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON -DMKA_BUILD_ASIO_SDK_TESTS=ON -DMKA_BUILD_ASIO=ON -DMKA_BUILD_DIRECTSOUND=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
-      - run: cmake --build build/windows-mingw15 --parallel 2
-      - run: python ci/check_manual_audio_tests.py build/windows-mingw15 asio
-      - run: python ci/check_asio_build.py build/windows-mingw15
-      - run: python ci/check_directsound_build.py build/windows-mingw15
-      - run: ctest --test-dir build/windows-mingw15 -L unit --no-tests=error --output-on-failure --parallel 2 --output-junit "$PWD/junit-windows-mingw15.xml"
-      - name: Configure optimized MinGW module consumer
-        run: cmake --preset core -B build/windows-mingw15-release -DCMAKE_CXX_COMPILER=g++ -DMKA_BUILD_WASAPI=ON -DCMAKE_BUILD_TYPE=Release -DMKA_BUILD_ASIO_SDK_TESTS=ON -DMKA_BUILD_ASIO=ON -DMKA_BUILD_DIRECTSOUND=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
-      - run: cmake --build build/windows-mingw15-release --parallel 2
-      - run: python ci/check_manual_audio_tests.py build/windows-mingw15-release asio
-      - run: python ci/check_directsound_build.py build/windows-mingw15-release
-      - run: ctest --test-dir build/windows-mingw15-release -L unit --no-tests=error --output-on-failure --parallel 2 --output-junit "$PWD/junit-windows-mingw15-release.xml"
+      - run: cmake --preset core -B build/windows-mingw15-${{ matrix.profile }} -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DMKA_BUILD_WASAPI=ON -DMKA_BUILD_ASIO_SDK_TESTS=ON -DMKA_BUILD_ASIO=ON -DMKA_BUILD_DIRECTSOUND=ON -DMKA_ASIO_SDK_DIR="$PWD/build/asio-sdk/ASIOSDK"
+      - run: cmake --build build/windows-mingw15-${{ matrix.profile }} --parallel 2
+      - run: python ci/check_manual_audio_tests.py build/windows-mingw15-${{ matrix.profile }} asio
+      - run: python ci/check_asio_build.py build/windows-mingw15-${{ matrix.profile }}
+      - run: python ci/check_directsound_build.py build/windows-mingw15-${{ matrix.profile }}
+      - run: ctest --test-dir build/windows-mingw15-${{ matrix.profile }} -L unit --no-tests=error --output-on-failure --parallel 2 --output-junit "$PWD/junit-windows-mingw15-${{ matrix.profile }}.xml"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: windows-mingw15-tests
+          name: windows-mingw15-${{ matrix.profile }}-tests
           path: |
-            junit-windows-mingw15.xml
-            junit-windows-mingw15-release.xml
-            build/windows-mingw15/Testing/Temporary/LastTest.log
-            build/windows-mingw15-release/Testing/Temporary/LastTest.log
+            junit-windows-mingw15-${{ matrix.profile }}.xml
+            build/windows-mingw15-${{ matrix.profile }}/Testing/Temporary/LastTest.log
 
   windows-core:
     runs-on: windows-2022
