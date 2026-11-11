@@ -132,4 +132,23 @@ TEST(AsioRt, PublicNativeTransportAndOptionalOutputReadyDoNotAllocateOrRelease) 
     EXPECT_EQ(calls,10000u);EXPECT_EQ(fixture.readyCalls,10001u);EXPECT_EQ(allocations,0u);EXPECT_EQ(deallocations,0u);
     ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
 }
+TEST(AsioRt, DriverNotificationsUseOnlyAtomicsAndDoNotAllocateOrRelease) {
+    DriverFixture fixture;ASIO backend;
+    ASSERT_TRUE(backend.open({driverId,Direction::Output,0,2,48000,Format::Float32,256}));ASSERT_TRUE(backend.start());
+    std::size_t allocations=0,deallocations=0;
+    {wasapi_rt::Scope scope;
+        for (unsigned event=0;event<10000;++event) {
+            fixture.callbacks.asioMessage(kAsioOverload,0,nullptr,nullptr);
+            fixture.callbacks.sampleRateDidChange(48000);
+            fixture.callbacks.asioMessage(kAsioSelectorSupported,kAsioResetRequest,nullptr,nullptr);
+        }
+        for (unsigned event=0;event<1000;++event) {
+            fixture.callbacks.asioMessage(kAsioResetRequest,0,nullptr,nullptr);
+            fixture.callbacks.sampleRateDidChange(0);
+        }
+        allocations=scope.news();deallocations=scope.deletes();
+    }
+    EXPECT_EQ(allocations,0u);EXPECT_EQ(deallocations,0u);EXPECT_EQ(backend.status().xruns,10000u);EXPECT_TRUE(backend.status().failed);
+    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
+}
 }

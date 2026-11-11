@@ -33,6 +33,11 @@ public:
     TimingSnapshot timing() const noexcept { return timing_.snapshot(); }
     void clearTiming() noexcept { timing_.capture(nullptr,{}); }
     void setOutputReady(OutputReadySource source,bool supported) noexcept { readySource_ = source; readySupported_ = supported; }
+    void setExpectedRate(std::uint32_t rate) noexcept { expectedRate_ = rate; }
+    void rateChanged(ASIOSampleRate rate) noexcept { if (rate != expectedRate_) fail(); }
+    void invalidate() noexcept { fail(); }
+    void overload() noexcept { if (callbacks_.xrun) callbacks_.xrun(callbacks_.user); }
+    void resync() noexcept { overload(); fail(); }
     void process(long index,const ASIOTime* time = nullptr) noexcept {
         if (!enabled_.load(std::memory_order_acquire)) return;
         if (index != 0 && index != 1) { fail(); return; }
@@ -45,6 +50,10 @@ public:
             ~Leave() { flag.clear(std::memory_order_release); }
         } leave{processing_};
         if (!enabled_.load(std::memory_order_acquire) || failed()) return;
+        if (time && ((time->timeInfo.flags & (kSampleRateChanged | kClockSourceChanged))
+            || ((time->timeInfo.flags & kSampleRateValid) && time->timeInfo.sampleRate != expectedRate_))) {
+            fail(); return;
+        }
         timing_.capture(time,positionSource_);
         const auto frames = buffers_.frames();
         for (auto* channel : buffers_.outputChannels()) std::fill_n(channel,frames,0.0f);
@@ -76,6 +85,7 @@ private:
     TimingDiagnostics timing_;
     OutputReadySource readySource_;
     bool readySupported_ = false;
+    std::uint32_t expectedRate_ = 0;
     std::atomic<bool> enabled_{false}, failed_{false};
     std::atomic_flag processing_ = ATOMIC_FLAG_INIT;
 };
@@ -115,10 +125,30 @@ inline ASIOTime* sdkTimeInfo(ASIOTime* time,long index,ASIOBool) noexcept {
     return time;
 }
 inline long sdkMessage(long selector,long value,void*,double*) noexcept {
-    if (selector == kAsioEngineVersion) return 2;
-    if (selector == kAsioSupportsTimeInfo) return 1;
-    if (selector == kAsioSelectorSupported)
-        return value == kAsioEngineVersion || value == kAsioSupportsTimeInfo;
-    return 0;
+    if (selector == kAsioSelectorSupported) {
+        switch (value) {
+            case kAsioSelectorSupported: case kAsioEngineVersion: case kAsioSupportsTimeInfo:
+            case kAsioResetRequest: case kAsioResyncRequest: case kAsioOverload: return 1;
+            default: return 0;
+        }
+    }
+    switch (selector) {
+        case kAsioEngineVersion: return 2;
+        case kAsioSupportsTimeInfo: return 1;
+        case kAsioResetRequest:
+            CallbackRoute::visit([](AudioProcessor& processor) noexcept { processor.invalidate(); }); return 1;
+        case kAsioResyncRequest:
+            CallbackRoute::visit([](AudioProcessor& processor) noexcept { processor.resync(); }); return 1;
+        case kAsioOverload:
+            CallbackRoute::visit([](AudioProcessor& processor) noexcept { processor.overload(); }); return 1;
+        case kAsioBufferSizeChange: case kAsioLatenciesChanged:
+            // No live renegotiation. Reject the request and invalidate this
+            // frozen configuration; the application can stop/close/open.
+            CallbackRoute::visit([](AudioProcessor& processor) noexcept { processor.invalidate(); }); return 0;
+        default: return 0;
+    }
+}
+inline void sdkRateChanged(ASIOSampleRate rate) noexcept {
+    CallbackRoute::visit([&](AudioProcessor& processor) noexcept { processor.rateChanged(rate); });
 }
 }

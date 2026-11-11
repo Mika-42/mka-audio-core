@@ -146,6 +146,7 @@ public:
     const std::vector<std::uint32_t>& sampleRates() const noexcept { return rates_; }
     Failure allocateBuffers(const Request& request) {
         if (const auto result = audio_.prepare(request, inputs_, outputs_); result != Failure::none) return result;
+        processor_.setExpectedRate(request.rate);
         return control_.invoke([&] {
             buffersAttempted_ = true;
             const auto error = driver_->createBuffers(audio_.native().data(), static_cast<long>(audio_.native().size()),
@@ -158,7 +159,11 @@ public:
         });
     }
     ASIOError start(const ProcessingCallbacks& callbacks) noexcept {
-        if (!driver_ || !buffersReady_ || running_ || processor_.failed()) return ASE_InvalidMode;
+        if (!driver_ || !buffersReady_ || running_) return ASE_InvalidMode;
+        if (processor_.failed()) {
+            if (callbacks.failed) callbacks.failed(callbacks.user);
+            return ASE_InvalidMode;
+        }
         retireProcessing();
         try {
             return control_.invoke([&]() -> ASIOError {
@@ -309,7 +314,7 @@ private:
     std::vector<std::uint32_t> rates_;
     AudioBuffers audio_;
     AudioProcessor processor_{audio_};
-    ASIOCallbacks callbacks_{&sdkBufferSwitch, &coldRateChanged, &sdkMessage, &sdkTimeInfo};
+    ASIOCallbacks callbacks_{&sdkBufferSwitch, &sdkRateChanged, &sdkMessage, &sdkTimeInfo};
     bool buffersAttempted_ = false;
     bool buffersReady_ = false, running_ = false, potentialActive_ = false;
     std::uint32_t requestedRate_ = 0;

@@ -87,5 +87,4 @@ private:
     std::vector<const float*> inputChannels_;
     std::vector<float*> outputChannels_;
 };
-inline void coldRateChanged(ASIOSampleRate) noexcept {}
 }
