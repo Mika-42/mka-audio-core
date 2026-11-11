@@ -118,4 +118,18 @@ TEST(AsioRt, EveryNativeOutputLayoutConvertsWithoutCxxAllocationOrRelease) {
         EXPECT_EQ(allocations,0u);EXPECT_EQ(deallocations,0u);ASSERT_TRUE(backend.close());
     }
 }
+TEST(AsioRt, PublicNativeTransportAndOptionalOutputReadyDoNotAllocateOrRelease) {
+    DriverFixture fixture;unsigned calls=0;ASIO backend;fixture.readyResult=ASE_OK;
+    ASSERT_TRUE(backend.setProcessFunction(+[](void* user,const AudioProcessContext& context) noexcept {
+        for (unsigned channel=0;channel<context.output.count;++channel)
+            for (unsigned frame=0;frame<context.frames;++frame) context.output.channels[channel][frame]=0.25f;
+        ++*static_cast<unsigned*>(user);
+    },&calls));
+    ASSERT_TRUE(backend.open({driverId,Direction::Output,0,2,48000,Format::Float32,256}));ASSERT_TRUE(backend.start());
+    std::size_t allocations=0,deallocations=0;
+    {wasapi_rt::Scope scope;for (unsigned block=0;block<10000;++block) fixture.callbacks.bufferSwitch(block%2,ASIOTrue);
+        allocations=scope.news();deallocations=scope.deletes();}
+    EXPECT_EQ(calls,10000u);EXPECT_EQ(fixture.readyCalls,10001u);EXPECT_EQ(allocations,0u);EXPECT_EQ(deallocations,0u);
+    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
+}
 }

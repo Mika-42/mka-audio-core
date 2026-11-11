@@ -26,13 +26,15 @@ inline Failure nativeOpen(const Request& request, void** out) noexcept {
     }
     catch (...) { return Failure::configuration; }
 }
-inline ASIOError unavailableOperation(void*) noexcept { return ASE_NotPresent; }
-inline ASIOError unavailableStart(void*,const ProcessingCallbacks&) noexcept { return ASE_NotPresent; }
+inline ASIOError nativeStart(void* state,const ProcessingCallbacks& callbacks) noexcept {
+    return static_cast<Driver*>(state)->start(callbacks);
+}
+inline ASIOError nativeStop(void* state) noexcept { return static_cast<Driver*>(state)->stop(); }
 struct Api {
     std::vector<Device> (*devices)() = nativeCapableDevices;
     Failure (*open)(const Request&, void**) noexcept = nativeOpen;
-    ASIOError (*start)(void*,const ProcessingCallbacks&) noexcept = unavailableStart;
-    ASIOError (*stop)(void*) noexcept = unavailableOperation;
+    ASIOError (*start)(void*,const ProcessingCallbacks&) noexcept = nativeStart;
+    ASIOError (*stop)(void*) noexcept = nativeStop;
     ASIOError (*close)(void**) noexcept = closeDriver;
 };
 #if defined(MKA_ASIO_TESTING)

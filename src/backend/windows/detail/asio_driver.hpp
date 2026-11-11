@@ -77,9 +77,17 @@ public:
         try {
             return control_.invoke([&]() -> ASIOError {
                 ASIOError restored = ASE_OK;
+                if (potentialActive_) {
+                    restored = driver_->stop();
+                    if (restored == ASE_OK) potentialActive_ = false;
+                }
+                running_ = false;
                 if (buffersAttempted_) {
                     buffersAttempted_ = false;
-                    restored = driver_->disposeBuffers();
+                    buffersReady_ = false;
+                    const auto disposed = driver_->disposeBuffers();
+                    if (disposed == ASE_OK) potentialActive_ = false;
+                    if (restored == ASE_OK) restored = disposed;
                 }
                 if (originalRate_) {
                     const auto rate = *originalRate_;
@@ -119,6 +127,7 @@ public:
             if (error != ASE_OK) return failure(error);
             if (actual != rate || !portableRate(actual)) return Failure::rate;
             rates_ = {requested};
+            requestedRate_ = requested;
             return Failure::none;
         });
     }
@@ -144,8 +153,57 @@ public:
             if (error != ASE_OK) return error == ASE_InvalidMode ? Failure::buffer : failure(error);
             if (const auto result = audio_.validateNative(); result != Failure::none) return result;
             audio_.primeOutputs();
-            return CallbackRoute::publish(processor_) ? Failure::none : Failure::configuration;
+            buffersReady_ = CallbackRoute::publish(processor_);
+            return buffersReady_ ? Failure::none : Failure::configuration;
         });
+    }
+    ASIOError start(const ProcessingCallbacks& callbacks) noexcept {
+        if (!driver_ || !buffersReady_ || running_ || processor_.failed()) return ASE_InvalidMode;
+        retireProcessing();
+        try {
+            return control_.invoke([&]() -> ASIOError {
+                if (potentialActive_) {
+                    const auto stopped = driver_->stop();
+                    if (stopped != ASE_OK) return stopped;
+                    potentialActive_ = false;
+                }
+                ASIOSampleRate actual = 0;
+                auto error = driver_->getSampleRate(&actual);
+                if (error != ASE_OK) return error;
+                if (actual != requestedRate_) return ASE_NoClock;
+                audio_.primeOutputs();
+                configureProcessing(callbacks);
+                processor_.clearTiming();
+                const bool ready = audio_.outputs() && driver_->outputReady() == ASE_OK;
+                processor_.setOutputReady({driver_,+[](void* sdk) noexcept {
+                    return static_cast<IASIO*>(sdk)->outputReady();
+                }},ready);
+                if (!CallbackRoute::publish(processor_)) return ASE_InvalidMode;
+                potentialActive_ = true;
+                error = driver_->start();
+                if (error == ASE_OK) {
+                    actual = 0;
+                    error = driver_->getSampleRate(&actual);
+                    if (error == ASE_OK && actual != requestedRate_) error = ASE_NoClock;
+                }
+                if (error == ASE_OK && processor_.enable()) { running_ = true; return ASE_OK; }
+                retireProcessing();
+                potentialActive_ = driver_->stop() != ASE_OK;
+                return error == ASE_OK ? ASE_InvalidMode : error;
+            });
+        } catch (...) { retireProcessing(); return ASE_HWMalfunction; }
+    }
+    ASIOError stop() noexcept {
+        if (!driver_) return ASE_NotPresent;
+        retireProcessing();
+        try {
+            return control_.invoke([&]() -> ASIOError {
+                if (!potentialActive_) { running_ = false; return ASE_OK; }
+                const auto error = driver_->stop();
+                if (error == ASE_OK) { potentialActive_ = false; running_ = false; }
+                return error;
+            });
+        } catch (...) { return ASE_HWMalfunction; }
     }
     const AudioBuffers& audioBuffers() const noexcept { return audio_; }
     TimingSnapshot timing() const noexcept { return processor_.timing(); }
@@ -253,6 +311,8 @@ private:
     AudioProcessor processor_{audio_};
     ASIOCallbacks callbacks_{&sdkBufferSwitch, &coldRateChanged, &sdkMessage, &sdkTimeInfo};
     bool buffersAttempted_ = false;
+    bool buffersReady_ = false, running_ = false, potentialActive_ = false;
+    std::uint32_t requestedRate_ = 0;
 };
 
 inline std::mutex driverOwnership;

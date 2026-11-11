@@ -17,8 +17,8 @@ public:
     void getDriverName(char* name) override;
     long getDriverVersion() override { return 123; }
     void getErrorMessage(char* text) override { std::memcpy(text, "init refused", 13); }
-    ASIOError start() override { return ASE_InvalidMode; }
-    ASIOError stop() override { return ASE_OK; }
+    ASIOError start() override;
+    ASIOError stop() override;
     ASIOError getChannels(long* input, long* output) override;
     ASIOError getLatencies(long* input, long* output) override { *input = 64; *output = 64; return ASE_OK; }
     ASIOError getBufferSize(long* min, long* max, long* preferred, long* granularity) override;
@@ -33,10 +33,12 @@ public:
     ASIOError disposeBuffers() override;
     ASIOError controlPanel() override { return ASE_NotPresent; }
     ASIOError future(long, void*) override { return ASE_InvalidParameter; }
-    ASIOError outputReady() override { return ASE_NotPresent; }
+    ASIOError outputReady() override;
 private:
+    void stopWorker() noexcept { worker_.request_stop(); if (worker_.joinable()) worker_.join(); }
     DriverFixture& owner_;
     std::atomic<ULONG> references_{1};
+    std::jthread worker_;
 };
 struct DriverFixture {
     inline static DriverFixture* current = nullptr;
@@ -79,6 +81,15 @@ struct DriverFixture {
     ASIOTimeStamp reportedTimestamp{};
     std::atomic<unsigned> positionCalls{0};
     std::atomic<DWORD> positionThread{0};
+    ASIOError startResult = ASE_OK, stopResult = ASE_OK;
+    std::atomic<ASIOError> readyResult{ASE_NotPresent};
+    std::atomic<unsigned> starts{0}, stops{0}, readyCalls{0};
+    std::atomic<DWORD> startThread{0}, stopThread{0}, readyThread{0};
+    std::atomic<bool> nativeRunning{false};
+    std::atomic<float> readyObservedSample{0};
+    std::atomic<unsigned> currentHalf{0};
+    bool fireStartCallback = false, partialStart = false, runAudioThread = false;
+    ASIOSampleRate changeRateOnStart = 0;
     bool acceptInit = true, nullInterface = false, partialFailure = false, sta = false, validWindow = false;
     unsigned live = 0, destroyed = 0, creates = 0, inits = 0, comAttempts = 0, comReferences = 0, uninitializes = 0;
     DWORD creationThread = 0, initThread = 0, releaseThread = 0, uninitializeThread = 0;
@@ -127,6 +138,7 @@ inline HRESULT FakeDriver::QueryInterface(REFIID iid, void** out) {
 inline ULONG FakeDriver::Release() {
     const auto count = --references_;
     if (!count) {
+        stopWorker(); owner_.nativeRunning = false;
         owner_.storage.clear(); owner_.createdBuffers.clear();
         owner_.releaseThread = GetCurrentThreadId(); --owner_.live; ++owner_.destroyed; delete this;
     }
@@ -218,11 +230,44 @@ inline ASIOError FakeDriver::createBuffers(ASIOBufferInfo* infos, long count, lo
 }
 inline ASIOError FakeDriver::disposeBuffers() {
     ++owner_.bufferDisposals; owner_.disposeThread = GetCurrentThreadId();
-    if (owner_.disposeResult == ASE_OK) { owner_.storage.clear(); owner_.createdBuffers.clear(); }
+    if (owner_.disposeResult == ASE_OK) {
+        stopWorker(); owner_.nativeRunning = false; owner_.storage.clear(); owner_.createdBuffers.clear();
+    }
     return owner_.disposeResult;
 }
 inline ASIOError FakeDriver::getSamplePosition(ASIOSamples* position,ASIOTimeStamp* timestamp) {
     ++owner_.positionCalls; owner_.positionThread = GetCurrentThreadId();
     *position = owner_.reportedPosition; *timestamp = owner_.reportedTimestamp; return owner_.positionResult;
+}
+inline ASIOError FakeDriver::start() {
+    ++owner_.starts; owner_.startThread = GetCurrentThreadId();
+    if (owner_.changeRateOnStart) owner_.currentRate = owner_.changeRateOnStart;
+    if (owner_.fireStartCallback) owner_.callbacks.bufferSwitch(0,ASIOTrue);
+    if (owner_.startResult == ASE_OK || owner_.partialStart) {
+        owner_.nativeRunning = true;
+        if (owner_.runAudioThread) worker_ = std::jthread([this](std::stop_token stop) {
+            unsigned half = 0;
+            while (!stop.stop_requested()) {
+                owner_.currentHalf = half;
+                owner_.callbacks.bufferSwitch(half,ASIOTrue);
+                half ^= 1;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        });
+    }
+    return owner_.startResult;
+}
+inline ASIOError FakeDriver::stop() {
+    ++owner_.stops; owner_.stopThread = GetCurrentThreadId();
+    if (owner_.stopResult == ASE_OK) { stopWorker(); owner_.nativeRunning = false; }
+    return owner_.stopResult;
+}
+inline ASIOError FakeDriver::outputReady() {
+    ++owner_.readyCalls; owner_.readyThread = GetCurrentThreadId();
+    if (owner_.nativeFormat == ASIOSTFloat32LSB) for (const auto& info : owner_.createdBuffers) if (!info.isInput) {
+        float value=0; std::memcpy(&value,info.buffers[owner_.currentHalf.load()],sizeof(value));
+        owner_.readyObservedSample = value; break;
+    }
+    return owner_.readyResult.load();
 }
 }

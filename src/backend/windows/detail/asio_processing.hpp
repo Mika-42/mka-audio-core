@@ -15,6 +15,10 @@ struct ProcessingCallbacks {
     void (*xrun)(void*) noexcept = nullptr;
     void (*failed)(void*) noexcept = nullptr;
 };
+struct OutputReadySource {
+    void* driver = nullptr;
+    ASIOError (*ready)(void*) noexcept = nullptr;
+};
 class AudioProcessor {
 public:
     explicit AudioProcessor(AudioBuffers& buffers) : buffers_(buffers) {}
@@ -27,6 +31,8 @@ public:
     bool failed() const noexcept { return failed_.load(std::memory_order_acquire); }
     void setPositionSource(PositionSource source) noexcept { positionSource_ = source; }
     TimingSnapshot timing() const noexcept { return timing_.snapshot(); }
+    void clearTiming() noexcept { timing_.capture(nullptr,{}); }
+    void setOutputReady(OutputReadySource source,bool supported) noexcept { readySource_ = source; readySupported_ = supported; }
     void process(long index,const ASIOTime* time = nullptr) noexcept {
         if (!enabled_.load(std::memory_order_acquire)) return;
         if (index != 0 && index != 1) { fail(); return; }
@@ -56,6 +62,8 @@ public:
             if (!callbacks_.write(layout,static_cast<std::byte*>(buffers_.native()[descriptor].buffers[index]),
                 static_cast<std::size_t>(frames)*layout.bytes,buffers_.outputChannels()[channel],frames)) { fail(); return; }
         }
+        if (buffers_.outputs() && readySupported_ && readySource_.ready)
+            if (readySource_.ready(readySource_.driver) != ASE_OK) { readySupported_ = false; fail(); }
     }
 private:
     void fail() noexcept {
@@ -66,6 +74,8 @@ private:
     ProcessingCallbacks callbacks_;
     PositionSource positionSource_;
     TimingDiagnostics timing_;
+    OutputReadySource readySource_;
+    bool readySupported_ = false;
     std::atomic<bool> enabled_{false}, failed_{false};
     std::atomic_flag processing_ = ATOMIC_FLAG_INIT;
 };
