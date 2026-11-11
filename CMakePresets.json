@@ -25,7 +25,8 @@
         "MKA_ENABLE_COVERAGE": "OFF",
         "MKA_BUILD_WASAPI": "OFF",
         "MKA_BUILD_ASIO": "OFF",
-        "MKA_BUILD_ASIO_SDK_TESTS": "OFF"
+        "MKA_BUILD_ASIO_SDK_TESTS": "OFF",
+        "MKA_BUILD_DIRECTSOUND": "OFF"
       }
     },
     {
@@ -89,6 +90,14 @@
         "MKA_BUILD_ASIO": "ON",
         "MKA_ASIO_SDK_DIR": "$env{MKA_ASIO_SDK_DIR}"
       }
+    },
+    {
+      "name": "windows-directsound",
+      "inherits": "windows-core",
+      "displayName": "Windows DirectSound without WASAPI or ASIO",
+      "cacheVariables": {
+        "MKA_BUILD_DIRECTSOUND": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -126,6 +135,10 @@
     {
       "name": "windows-asio",
       "configurePreset": "windows-asio"
+    },
+    {
+      "name": "windows-directsound",
+      "configurePreset": "windows-directsound"
     }
   ],
   "testPresets": [
@@ -241,6 +254,22 @@
     {
       "name": "windows-asio",
       "configurePreset": "windows-asio",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "unit"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "jobs": 2
+      }
+    },
+    {
+      "name": "windows-directsound",
+      "configurePreset": "windows-directsound",
       "output": {
         "outputOnFailure": true
       },
