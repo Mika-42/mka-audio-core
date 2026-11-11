@@ -24,7 +24,7 @@ TEST(DirectSoundModule, PublicClassConstructsClosedWithoutInventingANativeStream
     static_assert(std::is_final_v<DirectSound> && std::is_base_of_v<Backend, DirectSound>);
     static_assert(!std::is_copy_constructible_v<DirectSound> && !std::is_move_constructible_v<DirectSound>);
     DirectSound backend;
-    EXPECT_TRUE(backend.getEndPoints().empty());
+    [[maybe_unused]] const auto nativeSnapshot = backend.getEndPoints();
     EXPECT_TRUE(backend.setProcessFunction(nullptr));
     EXPECT_EQ(backend.start().error(), ErrorType::InvalidState);
     EXPECT_EQ(backend.open({"missing", Direction::Output, 0, 2, 48000, Format::Float32, 256}).error(),

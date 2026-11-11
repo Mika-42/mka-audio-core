@@ -2,11 +2,11 @@
 #include <atomic>
 #include <utility>
 #include "directsound_types.hpp"
+#include "directsound_devices.hpp"
 
 namespace mka_ds_detail {
-// Subsequent native discovery/buffer cards replace these unavailable adapters.
+// Subsequent native buffer cards replace these unavailable transport adapters.
 // Until a native stream exists, the production backend cannot report Open.
-inline std::vector<Device> nativeDevices() { return {}; }
 inline Failure nativeOpen(const Request&, void** state) noexcept {
     *state = nullptr;
     return Failure::endpoint;
