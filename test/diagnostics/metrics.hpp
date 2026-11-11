@@ -38,4 +38,17 @@ inline Distribution serviceTime(const Recorder& recorder) {
     for(std::size_t i=0;i<recorder.stored;++i){const auto& s=recorder.samples[i];if(s.end>=s.begin)values.push_back(static_cast<double>(s.end-s.begin));}
     return distribution(std::move(values));
 }
+inline Distribution jitter(const Recorder& recorder,std::uint32_t rate) {
+    if(!rate)return {};
+    std::vector<double> values;values.reserve(recorder.stored);
+    for(std::size_t i=1;i<recorder.stored;++i){
+        const auto& previous=recorder.samples[i-1];const auto& current=recorder.samples[i];
+        if(!previous.frames || current.begin<previous.begin)continue;
+        const auto expected=static_cast<double>(previous.frames)*1e9/rate;
+        const auto actual=static_cast<double>(current.begin-previous.begin);
+        values.push_back(std::abs(actual-expected));
+    }
+    return distribution(std::move(values));
+}
+
 }
