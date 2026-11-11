@@ -537,7 +537,7 @@ if(MKA_BUILD_ASIO)
             test/windows/asio/test_buffer_limits.cpp test/windows/asio/test_channel_layout.cpp test/windows/asio/test_rates.cpp
             test/windows/asio/test_audio_buffers.cpp test/windows/asio/test_processing.cpp test/windows/asio/test_timing.cpp
             test/windows/asio/test_input_convert.cpp test/windows/asio/test_output_convert.cpp test/windows/asio/test_transport.cpp
-            test/windows/asio/test_invalidation.cpp test/windows/asio/test_cleanup.cpp)
+            test/windows/asio/test_invalidation.cpp test/windows/asio/test_cleanup.cpp test/windows/asio/test_integration.cpp)
         if(MKA_ALLOCATOR_TESTS)
             target_sources(mka-audio-asio-native-tests PRIVATE test/windows/rt_alloc.cpp test/windows/asio/test_rt_asio.cpp)
         endif()
@@ -545,6 +545,14 @@ if(MKA_BUILD_ASIO)
         target_compile_definitions(mka-audio-asio-native-tests PRIVATE MKA_ASIO_TESTING=1)
         target_link_libraries(mka-audio-asio-native-tests PRIVATE mka-audio-asio GTest::gtest_main)
         gtest_discover_tests(mka-audio-asio-native-tests TEST_PREFIX "asio.native.")
+        add_executable(mka-audio-asio-hardware-tests test/windows/asio/test_hardware.cpp test/windows/asio/test_manual.cpp)
+        target_include_directories(mka-audio-asio-hardware-tests PRIVATE "${mka_asio_sdk_root}/common")
+        target_compile_definitions(mka-audio-asio-hardware-tests PRIVATE MKA_ASIO_TESTING=1)
+        target_link_libraries(mka-audio-asio-hardware-tests PRIVATE mka-audio-asio GTest::gtest_main)
+        if(MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_link_libraries(mka-audio-asio-hardware-tests PRIVATE stdc++exp)
+        endif()
+        gtest_discover_tests(mka-audio-asio-hardware-tests TEST_PREFIX "asio.hardware.")
     endif()
 endif()
 
