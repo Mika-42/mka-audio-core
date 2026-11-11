@@ -259,6 +259,7 @@ if (MKA_BUILD_TESTS)
             test/test_convert_extremes.cpp
             test/test_endpoint_contract.cpp
             test/test_error_contract.cpp
+            test/test_manual_audio.cpp
     )
 
     target_link_libraries(mka-core-audio-tests
@@ -490,8 +491,13 @@ if(MKA_BUILD_WASAPI)
     target_compile_definitions(mka-audio-wasapi PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     if(MKA_BUILD_TESTS)
         target_compile_definitions(mka-audio-wasapi PRIVATE MKA_WASAPI_TESTING=1)
-        add_executable(mka-audio-wasapi-tests test/windows/test_wasapi.cpp test/windows/test_compat.cpp test/windows/test_com.cpp test/windows/test_devices.cpp test/windows/test_capabilities.cpp test/windows/test_open.cpp test/windows/test_format.cpp test/windows/test_shared.cpp test/windows/test_render_event.cpp test/windows/test_capture.cpp test/windows/test_planar.cpp test/windows/test_lifecycle.cpp test/windows/test_invalidation.cpp test/windows/test_public_wasapi.cpp test/windows/test_hardware.cpp)
+        add_executable(mka-audio-wasapi-tests test/windows/test_wasapi.cpp test/windows/test_compat.cpp test/windows/test_com.cpp test/windows/test_devices.cpp test/windows/test_capabilities.cpp test/windows/test_open.cpp test/windows/test_format.cpp test/windows/test_shared.cpp test/windows/test_render_event.cpp test/windows/test_capture.cpp test/windows/test_planar.cpp test/windows/test_lifecycle.cpp test/windows/test_invalidation.cpp test/windows/test_public_wasapi.cpp test/windows/test_hardware.cpp test/windows/test_exclusive.cpp)
         target_link_libraries(mka-audio-wasapi-tests PRIVATE mka-audio-wasapi GTest::gtest_main ole32 uuid avrt)
+        target_sources(mka-audio-wasapi-tests PRIVATE test/windows/test_manual_audio.cpp)
+        if(MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            # MinGW's std::print console support is provided by libstdc++exp.
+            target_link_libraries(mka-audio-wasapi-tests PRIVATE stdc++exp)
+        endif()
         target_compile_definitions(mka-audio-wasapi-tests PRIVATE MKA_WASAPI_TESTING=1)
         if(MKA_ALLOCATOR_TESTS)
             target_sources(mka-audio-wasapi-tests PRIVATE test/windows/rt_alloc.cpp test/windows/test_rt.cpp)

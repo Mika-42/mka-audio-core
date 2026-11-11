@@ -17,9 +17,15 @@ Backend error/status/event contract and 1,000 complete public lifecycle cycles.
 The native factory override is private to test builds. A separate library-only
 Windows build verifies that the override and GoogleTest are not compiled in.
 
-Hardware cases use the public backend and an actual active endpoint. They skip
+Hardware smoke cases use the public backend and an actual active endpoint. They skip
 explicitly if the runner has no usable audio endpoint/service; a skip is not
-hardware validation. Render tests produce silence. Actual unplug/replug endurance
+hardware validation. Smoke render tests produce silence. The two opt-in
+`WasapiManualTest` cases play a 440 Hz sine and record five seconds of microphone
+audio before replaying it, with signal levels and a raw WAV for diagnosis. See
+[manual WASAPI audio tests](manual-wasapi.md) for the PowerShell runner and CLion
+commands. They are compiled in Windows builds, disabled by default, and labelled
+`integration;hardware;wasapi;manual` instead of `unit`.
+Actual unplug/replug endurance
 requires a Windows audio device; controlled HRESULT injection is reported
 separately from a physical unplug.
 
@@ -40,3 +46,9 @@ counters provide their respective evidence without claiming those tools on Windo
 The GitHub `Windows C++26 checks` workflow uploads JUnit, CTest logs and ASan
 witness output. Each PR carries its own check results; do not infer a physical
 hardware success from compilation or from a green job containing SKIP cases.
+
+Exclusive capability queries are a separate read-only hardware assessment, with
+supported/unsupported/error counts in JUnit and explicit unavailable-device skips.
+See [exclusive-mode assessment](wasapi-exclusive-assessment.md). They never
+initialize or start an exclusive stream and do not establish exclusive playback
+or capture readiness.

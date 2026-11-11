@@ -13,7 +13,8 @@ public:
     HRESULT mixResult=S_OK, periodResult=S_OK, supportResult=S_OK;
     WAVEFORMATEXTENSIBLE requested{};
     AUDCLNT_SHAREMODE requestedMode=AUDCLNT_SHAREMODE_EXCLUSIVE;
-    unsigned supportCalls=0, initializeCalls=0;
+    unsigned supportCalls=0, initializeCalls=0, exclusiveCalls=0;
+    HRESULT exclusiveResult=S_OK;unsigned exclusiveFormatsMask=0x3Fu;bool exclusiveClosestWasNull=true;
     HRESULT initializeResult=S_OK, bufferSizeResult=S_OK, eventResult=S_OK, renderServiceResult=S_OK;
     HRESULT captureServiceResult=S_OK;unsigned captureServiceCalls=0;
     Microsoft::WRL::ComPtr<FakeCapture> capture=makeFake<FakeCapture>();
@@ -44,6 +45,14 @@ public:
     HRESULT STDMETHODCALLTYPE IsFormatSupported(AUDCLNT_SHAREMODE mode, const WAVEFORMATEX* f, WAVEFORMATEX** closest) override {
         ++supportCalls;requestedMode=mode;requested={};
         std::memcpy(&requested,f,sizeof(WAVEFORMATEX)+f->cbSize);
+        if(mode==AUDCLNT_SHAREMODE_EXCLUSIVE) {
+            ++exclusiveCalls;exclusiveClosestWasNull=exclusiveClosestWasNull && closest==nullptr;
+            if(closest)return E_INVALIDARG;
+            const auto kind=mka_wasapi_detail::sampleKind(*f);
+            if(!kind || !(exclusiveFormatsMask&(1u<<static_cast<unsigned>(*kind))))return AUDCLNT_E_UNSUPPORTED_FORMAT;
+            return exclusiveResult;
+        }
+        if(!closest)return E_POINTER;
         *closest=nullptr;
         if (supportResult==S_FALSE) { *closest=static_cast<WAVEFORMATEX*>(CoTaskMemAlloc(sizeof(mix)));if (!*closest) return E_OUTOFMEMORY;std::memcpy(*closest,&mix,sizeof(mix)); }
         return supportResult;
