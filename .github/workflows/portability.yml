@@ -47,12 +47,16 @@ jobs:
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
           echo "CXX=$(brew --prefix llvm)/bin/clang++" >> "$GITHUB_ENV"
       - run: python ci/check_client.py --work build/client-core --core-only
-      - run: python ci/check_client.py --work build/client-native
+      - run: python ci/check_client.py --work build/client-native -- -DMKA_BUILD_DIAGNOSTICS=ON
+      - run: python ci/check_install.py --work build/package-core --core-only
+      - run: python ci/check_install.py --work build/package-native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: client-${{ matrix.os }}
-          path: build/client-*/client-results.xml
+          path: |
+            build/client-*/client-results.xml
+            build/package-*/installed-client-results.xml
 
   configuration-fuzz:
     runs-on: ubuntu-24.04
