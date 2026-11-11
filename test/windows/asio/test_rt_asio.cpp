@@ -56,4 +56,18 @@ TEST(AsioRt, PreparedUserProcessingAndNullCallbacksDoNotAllocateOrRelease) {
         allocations=scope.news(); deallocations=scope.deletes();}
     EXPECT_EQ(allocations,0u); EXPECT_EQ(deallocations,0u); ASSERT_TRUE(backend.close());
 }
+TEST(AsioRt, TimeInfoAndFallbackPositionDiagnosticsDoNotAllocateOrRelease) {
+    DriverFixture fixture; ASIO backend;
+    ASSERT_TRUE(backend.open({driverId,Direction::Output,0,2,48000,Format::Float32,256}));
+    activeDriver->configureProcessing({}); ASSERT_TRUE(activeDriver->enableProcessing());
+    fixture.positionResult=ASE_OK; ASIOTime time{}; time.timeInfo.flags=kSamplePositionValid|kSystemTimeValid;
+    std::size_t allocations=0,deallocations=0;
+    {wasapi_rt::Scope scope;for (unsigned block=0;block<10000;++block) {
+        time.timeInfo.samplePosition.lo=block; time.timeInfo.systemTime.lo=block*10;
+        fixture.callbacks.bufferSwitchTimeInfo(&time,block%2,ASIOTrue);
+        fixture.callbacks.bufferSwitch(block%2,ASIOFalse);
+    } allocations=scope.news(); deallocations=scope.deletes();}
+    EXPECT_EQ(allocations,0u); EXPECT_EQ(deallocations,0u); EXPECT_EQ(fixture.positionCalls,10000u);
+    ASSERT_TRUE(backend.close());
+}
 }

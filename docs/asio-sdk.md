@@ -198,3 +198,19 @@ allocation, lock or wait. Bindings preserve the backend instance and its user
 pointer, with XRun/Failed notifications through Core atomics. The native start
 gate stays disabled until S06-15; the dispatch tests enable the private processor
 explicitly with mocks. S06-13/14 supply the Core conversion hooks.
+
+## TimeInfo and diagnostic positions (S06-12)
+
+The host advertises TimeInfo support and processes either callback form once per
+block. It copies only flagged sample positions and nanosecond timestamps into
+owned atomic diagnostics, returning the original SDK pointer unchanged. No SDK
+timing pointer survives the callback. Missing/invalid flags leave the associated
+measurement unavailable; no DAW timeline or timecode API is added to Core.
+
+For the legacy callback or a null TimeInfo pointer, the host uses the SDK's
+getSamplePosition inside the audio callback, as prescribed by ASIO. This getter
+(and later optional outputReady) is an RT exception to the control-owner rule;
+initialization and other control calls remain on the owner thread. A failed
+optional timing query clears diagnostic validity without suppressing audio.
+Non-RT readers obtain coherent atomic position/timestamp snapshots. Native
+unsigned high/low words are widened before combining, including zero and UINT64_MAX.

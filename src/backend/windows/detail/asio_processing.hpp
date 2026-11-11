@@ -4,6 +4,7 @@
 #include <thread>
 #include <type_traits>
 #include "asio_audio_buffers.hpp"
+#include "asio_timing.hpp"
 
 namespace mka_asio_detail {
 struct ProcessingCallbacks {
@@ -24,7 +25,9 @@ public:
     }
     void disable() noexcept { enabled_.store(false,std::memory_order_release); }
     bool failed() const noexcept { return failed_.load(std::memory_order_acquire); }
-    void process(long index) noexcept {
+    void setPositionSource(PositionSource source) noexcept { positionSource_ = source; }
+    TimingSnapshot timing() const noexcept { return timing_.snapshot(); }
+    void process(long index,const ASIOTime* time = nullptr) noexcept {
         if (!enabled_.load(std::memory_order_acquire)) return;
         if (index != 0 && index != 1) { fail(); return; }
         if (processing_.test_and_set(std::memory_order_acquire)) {
@@ -36,6 +39,7 @@ public:
             ~Leave() { flag.clear(std::memory_order_release); }
         } leave{processing_};
         if (!enabled_.load(std::memory_order_acquire) || failed()) return;
+        timing_.capture(time,positionSource_);
         const auto frames = buffers_.frames();
         for (auto* channel : buffers_.outputChannels()) std::fill_n(channel,frames,0.0f);
         if (callbacks_.read) for (std::uint32_t channel = 0; channel < buffers_.inputs(); ++channel) {
@@ -60,6 +64,8 @@ private:
     }
     AudioBuffers& buffers_;
     ProcessingCallbacks callbacks_;
+    PositionSource positionSource_;
+    TimingDiagnostics timing_;
     std::atomic<bool> enabled_{false}, failed_{false};
     std::atomic_flag processing_ = ATOMIC_FLAG_INIT;
 };
@@ -93,5 +99,16 @@ private:
 };
 inline void sdkBufferSwitch(long index, ASIOBool) noexcept {
     CallbackRoute::visit([&](AudioProcessor& processor) noexcept { processor.process(index); });
+}
+inline ASIOTime* sdkTimeInfo(ASIOTime* time,long index,ASIOBool) noexcept {
+    CallbackRoute::visit([&](AudioProcessor& processor) noexcept { processor.process(index,time); });
+    return time;
+}
+inline long sdkMessage(long selector,long value,void*,double*) noexcept {
+    if (selector == kAsioEngineVersion) return 2;
+    if (selector == kAsioSupportsTimeInfo) return 1;
+    if (selector == kAsioSelectorSupported)
+        return value == kAsioEngineVersion || value == kAsioSupportsTimeInfo;
+    return 0;
 }
 }

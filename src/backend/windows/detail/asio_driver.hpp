@@ -62,6 +62,9 @@ public:
                 info_.errorMessage[sizeof(info_.errorMessage) - 1] = '\0';
                 return ASE_NotPresent;
             }
+            processor_.setPositionSource({driver_,+[](void* sdk,ASIOSamples* position,ASIOTimeStamp* timestamp) noexcept {
+                return static_cast<IASIO*>(sdk)->getSamplePosition(position,timestamp);
+            }});
             driver_->getDriverName(info_.name);
             info_.name[sizeof(info_.name) - 1] = '\0';
             info_.driverVersion = driver_->getDriverVersion();
@@ -145,6 +148,7 @@ public:
         });
     }
     const AudioBuffers& audioBuffers() const noexcept { return audio_; }
+    TimingSnapshot timing() const noexcept { return processor_.timing(); }
     void configureProcessing(ProcessingCallbacks callbacks) noexcept { processor_.configure(callbacks); }
     bool enableProcessing() noexcept {
         return CallbackRoute::publish(processor_) && processor_.enable();
@@ -247,7 +251,7 @@ private:
     std::vector<std::uint32_t> rates_;
     AudioBuffers audio_;
     AudioProcessor processor_{audio_};
-    ASIOCallbacks callbacks_{&sdkBufferSwitch, &coldRateChanged, &coldMessage, &coldTimeInfo};
+    ASIOCallbacks callbacks_{&sdkBufferSwitch, &coldRateChanged, &sdkMessage, &sdkTimeInfo};
     bool buffersAttempted_ = false;
 };
 

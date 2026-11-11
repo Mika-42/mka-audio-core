@@ -27,7 +27,7 @@ public:
     ASIOError setSampleRate(ASIOSampleRate) override;
     ASIOError getClockSources(ASIOClockSource*, long* count) override { *count = 0; return ASE_OK; }
     ASIOError setClockSource(long) override { return ASE_NotPresent; }
-    ASIOError getSamplePosition(ASIOSamples*, ASIOTimeStamp*) override { return ASE_SPNotAdvancing; }
+    ASIOError getSamplePosition(ASIOSamples*, ASIOTimeStamp*) override;
     ASIOError getChannelInfo(ASIOChannelInfo*) override;
     ASIOError createBuffers(ASIOBufferInfo*, long, long, ASIOCallbacks*) override;
     ASIOError disposeBuffers() override;
@@ -74,6 +74,11 @@ struct DriverFixture {
     std::vector<std::vector<std::byte>> storage;
     bool nullHalf = false, aliasedHalves = false, aliasedChannels = false;
     bool changedDescriptor = false, changedBufferDirection = false, wrappingPointer = false, fireColdCallbacks = false;
+    ASIOError positionResult = ASE_SPNotAdvancing;
+    ASIOSamples reportedPosition{};
+    ASIOTimeStamp reportedTimestamp{};
+    std::atomic<unsigned> positionCalls{0};
+    std::atomic<DWORD> positionThread{0};
     bool acceptInit = true, nullInterface = false, partialFailure = false, sta = false, validWindow = false;
     unsigned live = 0, destroyed = 0, creates = 0, inits = 0, comAttempts = 0, comReferences = 0, uninitializes = 0;
     DWORD creationThread = 0, initThread = 0, releaseThread = 0, uninitializeThread = 0;
@@ -215,5 +220,9 @@ inline ASIOError FakeDriver::disposeBuffers() {
     ++owner_.bufferDisposals; owner_.disposeThread = GetCurrentThreadId();
     if (owner_.disposeResult == ASE_OK) { owner_.storage.clear(); owner_.createdBuffers.clear(); }
     return owner_.disposeResult;
+}
+inline ASIOError FakeDriver::getSamplePosition(ASIOSamples* position,ASIOTimeStamp* timestamp) {
+    ++owner_.positionCalls; owner_.positionThread = GetCurrentThreadId();
+    *position = owner_.reportedPosition; *timestamp = owner_.reportedTimestamp; return owner_.positionResult;
 }
 }
