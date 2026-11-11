@@ -47,6 +47,23 @@ inputs and outputs. Equal GUIDs or names never establish a physical pairing or
 duplex support. Each direction is enumerated separately: unavailable capture
 does not hide playback, and unavailable playback does not hide capture.
 
+S07-05 probes mono/stereo tuples at 44.1/48/96 kHz, 128/256/512 processing frames
+and the five Core formats. The private setup thread owns an MTA and a hidden
+window; the same Windows control utility also preserves ASIO's STA behavior.
+General `GetCaps` is checked first, then temporary native buffers verify each
+candidate's returned WAVEFORMATEX and byte size. No `Play` or capture `Start` is
+called. Only successful probes contribute to capability lists. The lists are
+indicative unions of verified tuples, not a promise of their Cartesian product.
+Unavailable devices keep their metadata with empty capabilities. Actual stream
+opening will reuse the exact tuple validation, without silent replacements.
+
+The initial DirectSound implementation supports mono/stereo. Native buffers
+hold eight periods; the requested processing frame count stays unchanged.
+Byte sizes, block alignment and average byte rate are checked before narrowing
+to WORD/DWORD. Int24 is packed in three bytes. DirectSound may route application
+formats through the Windows mixer; a verified logical stream format does not
+prove the physical device's sample rate or an exclusive hardware path.
+
 DirectSound uses Windows I/O workers and does not offer a hard real-time
 guarantee. The application audio callback will still obey the Core contract:
 preallocated planar Float32 buffers, no allocation, blocking or logging.

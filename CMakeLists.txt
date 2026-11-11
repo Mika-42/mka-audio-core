@@ -527,14 +527,14 @@ if(MKA_BUILD_DIRECTSOUND)
     add_library(mka-audio-directsound)
     target_sources(mka-audio-directsound PUBLIC FILE_SET CXX_MODULES BASE_DIRS src FILES
         src/backend/windows/ds.cppm src/backend/windows/ds_compat.cppm)
-    target_link_libraries(mka-audio-directsound PRIVATE mka-core-audio dsound dxguid)
+    target_link_libraries(mka-audio-directsound PRIVATE mka-core-audio dsound dxguid ole32 user32)
     target_compile_features(mka-audio-directsound PUBLIC cxx_std_${MKA_CXX_STANDARD})
     target_compile_definitions(mka-audio-directsound PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN DIRECTSOUND_VERSION=0x0800)
     if(MKA_BUILD_TESTS)
         target_compile_definitions(mka-audio-directsound PRIVATE MKA_DIRECTSOUND_TESTING=1)
         add_executable(mka-audio-directsound-tests test/windows/directsound/test_module.cpp
             test/windows/directsound/test_sdk.cpp test/windows/directsound/test_host.cpp
-            test/windows/directsound/test_devices.cpp)
+            test/windows/directsound/test_devices.cpp test/windows/directsound/test_capabilities.cpp)
         target_link_libraries(mka-audio-directsound-tests PRIVATE mka-audio-directsound GTest::gtest_main)
         target_compile_definitions(mka-audio-directsound-tests PRIVATE MKA_DIRECTSOUND_TESTING=1 NOMINMAX WIN32_LEAN_AND_MEAN DIRECTSOUND_VERSION=0x0800)
         gtest_discover_tests(mka-audio-directsound-tests TEST_PREFIX "directsound.")
