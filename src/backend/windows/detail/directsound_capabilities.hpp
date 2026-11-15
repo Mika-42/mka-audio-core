@@ -25,18 +25,5 @@ inline std::optional<Capabilities> probeCapabilities(const DeviceId& id) {
     std::sort(result.rates.begin(), result.rates.end()); std::sort(result.buffers.begin(), result.buffers.end());
     return result;
 }
-inline std::vector<Device> nativeCapableDevices() {
-    auto result = nativeDevices();
-    for (auto& device : result) {
-        const auto id = parseDeviceId(device.id);
-        if (!id) continue;
-        try {
-            if (auto caps = probeCapabilities(*id)) {
-                if (id->flow == Flow::output) device.output = std::move(caps);
-                else device.input = std::move(caps);
-            }
-        } catch (...) { /* Keep metadata, without advertising an unverified tuple. */ }
-    }
-    return result;
-}
+std::vector<Device> nativeCapableDevices();
 }

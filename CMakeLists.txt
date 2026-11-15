@@ -527,6 +527,7 @@ if(MKA_BUILD_DIRECTSOUND)
     add_library(mka-audio-directsound)
     target_sources(mka-audio-directsound PUBLIC FILE_SET CXX_MODULES BASE_DIRS src FILES
         src/backend/windows/ds.cppm src/backend/windows/ds_compat.cppm)
+    target_sources(mka-audio-directsound PRIVATE src/backend/windows/detail/directsound_capabilities.cpp)
     target_link_libraries(mka-audio-directsound PRIVATE mka-core-audio dsound dxguid ole32 user32)
     target_compile_features(mka-audio-directsound PUBLIC cxx_std_${MKA_CXX_STANDARD})
     target_compile_definitions(mka-audio-directsound PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN DIRECTSOUND_VERSION=0x0800)
