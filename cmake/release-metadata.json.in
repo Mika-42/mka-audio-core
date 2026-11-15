@@ -1,0 +1,11 @@
+{
+  "name": "mka-audio-core",
+  "version": "@PROJECT_VERSION@",
+  "stage": "candidate",
+  "system": "@CMAKE_SYSTEM_NAME@",
+  "architecture": "@CMAKE_SYSTEM_PROCESSOR@",
+  "compiler": "@CMAKE_CXX_COMPILER_ID@",
+  "compiler_version": "@CMAKE_CXX_COMPILER_VERSION@",
+  "build_type": "@CMAKE_BUILD_TYPE@",
+  "backends": @MKA_RELEASE_BACKENDS_JSON@
+}
