@@ -4,7 +4,7 @@
 #include <expected>
 #include <string>
 #include <vector>
-#include "../../../src/backend/windows/detail/directsound_devices.hpp"
+#include "../../../src/backend/windows/detail/directsound_host.hpp"
 import mka.audio.backend.directsound;
 
 namespace {
@@ -16,6 +16,7 @@ struct Entry { GUID guid; const wchar_t* name; bool isDefault = false; };
 struct Discovery {
     inline static Discovery* current = nullptr;
     DiscoveryApi api;
+    Api host;
     std::vector<Entry> entries, inputEntries;
     HRESULT result = DS_OK, inputResult = DS_OK;
     unsigned calls = 0, accepted = 0, inputCalls = 0, inputAccepted = 0;
@@ -38,8 +39,9 @@ struct Discovery {
     }
     Discovery() {
         current = this; api.enumerateOutput = &enumerate; api.enumerateInput = &enumerateInput; testDiscoveryOverride = &api;
+        host.devices = nativeDevices; testApiOverride = &host;
     }
-    ~Discovery() { testDiscoveryOverride = nullptr; current = nullptr; }
+    ~Discovery() { testApiOverride = nullptr; testDiscoveryOverride = nullptr; current = nullptr; }
 };
 
 TEST(DirectSoundIdentity, GuidSerializationAndParsingHaveAnIndependentCanonicalOracle) {

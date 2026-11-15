@@ -5,6 +5,9 @@
 #include "directsound_devices.hpp"
 
 namespace mka_ds_detail {
+// Keep native probes out of the module interface. In particular, importing the
+// public Backend must not deserialize its private expected<WaveSpec> helpers.
+std::vector<Device> nativeCapableDevices();
 // Subsequent native buffer cards replace these unavailable transport adapters.
 // Until a native stream exists, the production backend cannot report Open.
 inline Failure nativeOpen(const Request&, void** state) noexcept {
@@ -15,7 +18,7 @@ inline Failure nativeStart(void*, const ProcessingCallbacks&) noexcept { return 
 inline Failure nativeStop(void*) noexcept { return Failure::none; }
 inline Failure nativeClose(void** state) noexcept { *state = nullptr; return Failure::none; }
 struct Api {
-    std::vector<Device> (*devices)() = nativeDevices;
+    std::vector<Device> (*devices)() = nativeCapableDevices;
     Failure (*open)(const Request&, void**) noexcept = nativeOpen;
     Failure (*start)(void*, const ProcessingCallbacks&) noexcept = nativeStart;
     Failure (*stop)(void*) noexcept = nativeStop;

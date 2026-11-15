@@ -17,5 +17,6 @@ if args.library_only:
         assert "/test/" not in name and "googletest" not in name, entry
         assert "MKA_DIRECTSOUND_TESTING" not in entry["command"], entry
         if "/src/backend/" in name:
-            assert name.endswith(("/windows/ds.cppm", "/windows/ds_compat.cppm")), entry
+            assert name.endswith(("/windows/ds.cppm", "/windows/ds_compat.cppm",
+                                  "/windows/detail/directsound_capabilities.cpp")), entry
 print("DirectSound build isolation verified; enabled:", present, "production:", args.library_only)

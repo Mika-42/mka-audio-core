@@ -3,9 +3,11 @@
 #include <atomic>
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <chrono>
 #include <expected>
 #include <thread>
@@ -56,9 +58,20 @@ class PipeWireNativeContract : public ::testing::Test {
 protected:
     EndpointConfig cfg{"mka_test_sink",Direction::Output,0,2,48000,Format::Float32,256};
     void SetUp() override {
-        fault = Fault::None;
+        fault = Fault::None; injectTerminal = false;
         PipeWire probe;
-        if (probe.getEndPoints().empty()) GTEST_SKIP() << "serveur PipeWire absent";
+        const auto endpoints = probe.getEndPoints();
+        const bool hasTestSink = std::any_of(endpoints.begin(), endpoints.end(), [&](const Endpoint& endpoint) {
+            return endpoint.id == cfg.id && endpoint.output.has_value();
+        });
+        if (!hasTestSink) {
+            const auto* expected = std::getenv("MKA_TEST_PIPEWIRE_DEVICE_ID");
+            if (expected && std::string_view(expected) == cfg.id)
+                FAIL() << "Le lanceur annonce la fixture PipeWire, mais le sink " << cfg.id << " est absent.";
+            GTEST_SKIP() << "Sink virtuel " << cfg.id << " absent. Depuis la racine du depot, lancer : "
+                "bash test/linux/run_virtual_tests.sh --pipewire-only "
+                "./cmake-build-debug/mka-audio-pipewire-contract-tests";
+        }
     }
     void TearDown() override { fault = Fault::None; EXPECT_EQ(liveStreams.load(),0); }
 };
