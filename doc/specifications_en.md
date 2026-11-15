@@ -501,7 +501,8 @@ alone prove that a simultaneous opening is possible.
 | JACK | One client name whose output ports feed framework input and whose input ports receive framework output. Both port groups must have enough channels. One server cycle supplies one duplex callback. Empty ID creates unconnected client ports. |
 | PipeWire | One source or sink node name; a valid Duplex request returns `ConfigurationFailed` before native stream creation. Input and Output are supported separately. |
 | PulseAudio | One source or sink name; a valid Duplex request returns `ConfigurationFailed` before native stream creation. Empty ID selects the default device for the requested single direction. |
-| Windows/macOS | Current backend files are module stubs; no working duplex implementation is claimed. |
+| Windows | WASAPI shared-mode input/output; duplex requests are rejected. |
+| macOS | CoreAudio HAL Float32 input/output or duplex on one device/clock; no implicit aggregate device. |
 
 ALSA does not combine unrelated capture/playback devices; JACK can expose both
 port groups under the same client ID. Two unidirectional backend instances do not

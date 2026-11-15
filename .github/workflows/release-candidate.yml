@@ -1,0 +1,80 @@
+name: V1 candidate package validation
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-candidate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  candidate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-build
+        if: runner.os == 'Linux'
+        with:
+          native: 'true'
+      - uses: actions/setup-python@v5
+        if: runner.os != 'Linux'
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - name: Configure Linux compiler
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          echo 'CXX=clang++-19' >> "$GITHUB_ENV"
+          echo 'CXXFLAGS=--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/14' >> "$GITHUB_ENV"
+      - name: Install Windows tools
+        if: runner.os == 'Windows'
+        run: python -m pip install 'cmake>=4.0,<5' ninja
+      - name: Install macOS compiler and module scanner
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm ninja cmake
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> "$GITHUB_ENV"
+      - name: Validate Release assertions and DSP integration
+        shell: bash
+        run: |
+          cmake --preset core -B build/release-tests -DCMAKE_BUILD_TYPE=Release -DMKA_BUILD_EXAMPLES=ON
+          cmake --build build/release-tests --parallel 2
+          ctest --test-dir build/release-tests -L unit --no-tests=error --output-on-failure --output-junit "$PWD/junit-release.xml"
+      - name: Prepare and consume binary/source candidate archives
+        run: python ci/build_release.py --work build/release
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v1-candidate-${{ matrix.os }}
+          path: |
+            build/release/artifacts/
+            junit-release.xml
+  native-dsp-asan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CXX: clang++-19
+      CXXFLAGS: --gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-build
+        with:
+          native: 'true'
+      - run: cmake --preset asan -B build/native-dsp-asan -DMKA_BUILD_ALSA=ON -DMKA_BUILD_EXAMPLES=ON
+      - run: cmake --build build/native-dsp-asan --parallel 2
+      - run: ctest --test-dir build/native-dsp-asan -R '^(dsp[.]|alsa[.](dsp|switch)[.])' --no-tests=error --output-on-failure --output-junit "${{ github.workspace }}/junit-native-dsp-asan.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-dsp-asan
+          path: junit-native-dsp-asan.xml

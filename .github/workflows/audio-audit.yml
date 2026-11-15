@@ -1,0 +1,34 @@
+name: Audio endurance and timing audit
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: audio-audit-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  virtual-soak:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CXX: clang++-19
+      CXXFLAGS: --gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-build
+        with:
+          native: 'true'
+      - run: cmake --preset core -B build/audit -DCMAKE_BUILD_TYPE=Release -DMKA_BUILD_DIAGNOSTICS=ON -DMKA_BUILD_ALSA=ON -DMKA_BUILD_JACK=ON -DMKA_BUILD_PIPEWIRE=ON -DMKA_BUILD_PULSEAUDIO=ON
+      - run: cmake --build build/audit --parallel 2
+      - name: One minute per backend on isolated virtual endpoints
+        run: bash test/linux/run_virtual_tests.sh python3 ci/run_audio_audit.py --build build/audit --seconds 60 --output build/audit/results
+      - name: Native server loss and return
+        run: ctest --test-dir build/audit -R 'jack.loss.' --no-tests=error --output-on-failure --output-junit "${{ github.workspace }}/junit-hotplug.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: virtual-audio-audit
+          path: |
+            build/audit/results/
+            junit-hotplug.xml

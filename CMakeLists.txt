@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 4.0)
 
-project(mka-core-audio VERSION 0.1.0
+project(mka-core-audio VERSION 1.0.0
         DESCRIPTION "Backend-agnostic real-time audio framework"
         LANGUAGES CXX
 )
+
+# Use GNU install directories in both build interfaces and package exports.
+include(GNUInstallDirs)
 
 # ============================================================
 # Project options
@@ -87,7 +90,11 @@ endif()
 # Core library
 # ============================================================
 
+configure_file(cmake/build_config.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/mka/audio/build_config.hpp" @ONLY)
 add_library(mka-core-audio)
+target_include_directories(mka-core-audio PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
+    "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 
 target_sources(mka-core-audio
         PUBLIC
@@ -100,6 +107,7 @@ target_sources(mka-core-audio
         src/core/endpoint.cppm
         src/core/constants.cppm
         src/core/error.cppm
+        src/core/diagnostics.cppm
         src/core/convert.cppm
         src/core/plateform.cppm
 )
@@ -137,7 +145,7 @@ if (MKA_BUILD_ALSA)
 
     target_compile_features(
             mka-audio-alsa
-            PRIVATE
+            PUBLIC
             cxx_std_${MKA_CXX_STANDARD}
     )
 
@@ -171,7 +179,7 @@ if (MKA_BUILD_PIPEWIRE)
 
     target_compile_features(
             mka-audio-pipewire
-            PRIVATE
+            PUBLIC
             cxx_std_${MKA_CXX_STANDARD}
     )
 
@@ -205,7 +213,7 @@ if (MKA_BUILD_JACK)
 
     target_compile_features(
             mka-audio-jack
-            PRIVATE
+            PUBLIC
             cxx_std_${MKA_CXX_STANDARD}
     )
 
@@ -239,7 +247,7 @@ if (MKA_BUILD_PULSEAUDIO)
 
     target_compile_features(
             mka-audio-pulseaudio
-            PRIVATE
+            PUBLIC
             cxx_std_${MKA_CXX_STANDARD}
     )
 
@@ -258,6 +266,7 @@ if (MKA_BUILD_TESTS)
     # --------------------------------------------------------
     add_executable(mka-core-audio-tests
             test/test_abstract_backend.cpp
+            test/test_backends.cpp
             test/test_backend_userdata.cpp
             test/test_backend_events.cpp
             test/test_backend_robustness.cpp
@@ -521,7 +530,7 @@ if(MKA_BUILD_COREAUDIO)
     if(MKA_BUILD_TESTS)
         target_compile_definitions(mka-audio-coreaudio PRIVATE MKA_COREAUDIO_TESTING=1)
         add_executable(mka-audio-coreaudio-tests test/macos/test_coreaudio.cpp
-            test/macos/test_devices.cpp test/macos/test_process.cpp test/macos/test_lifecycle.cpp)
+            test/macos/test_devices.cpp test/macos/test_process.cpp test/macos/test_lifecycle.cpp test/macos/test_hardware.cpp)
         target_compile_definitions(mka-audio-coreaudio-tests PRIVATE MKA_COREAUDIO_TESTING=1)
         target_link_libraries(mka-audio-coreaudio-tests PRIVATE mka-audio-coreaudio GTest::gtest_main
             ${MKA_COREAUDIO_FRAMEWORK} ${MKA_COREFOUNDATION_FRAMEWORK})
@@ -532,6 +541,88 @@ if(MKA_BUILD_COREAUDIO)
     endif()
 endif()
 
+
+option(MKA_BUILD_DIAGNOSTICS "Build opt-in CPU/transport timing diagnostics" OFF)
+if(MKA_BUILD_DIAGNOSTICS)
+    add_executable(mka-audio-profile tools/audio_profile.cpp)
+    target_link_libraries(mka-audio-profile PRIVATE mka-core-audio)
+    foreach(backend alsa jack pipewire pulseaudio wasapi coreaudio)
+        if(TARGET mka-audio-${backend})
+            target_link_libraries(mka-audio-profile PRIVATE mka-audio-${backend})
+        endif()
+    endforeach()
+endif()
+if(MKA_BUILD_TESTS)
+    add_executable(mka-audio-metrics-tests test/diagnostics/test_metrics.cpp)
+    target_link_libraries(mka-audio-metrics-tests PRIVATE GTest::gtest_main)
+    gtest_discover_tests(mka-audio-metrics-tests TEST_PREFIX "diagnostics.")
+endif()
+
+if(MKA_BUILD_TESTS AND MKA_BUILD_ALSA)
+    add_executable(mka-audio-realtime-tests test/linux/alsa/test_realtime.cpp)
+    target_include_directories(mka-audio-realtime-tests PRIVATE ${ALSA_INCLUDE_DIR})
+    target_link_libraries(mka-audio-realtime-tests PRIVATE GTest::gtest_main)
+    foreach(symbol sched_get_priority_min sched_get_priority_max pthread_setschedparam pthread_getschedparam)
+        target_link_options(mka-audio-realtime-tests PRIVATE "-Wl,--wrap=${symbol}")
+    endforeach()
+    gtest_discover_tests(mka-audio-realtime-tests TEST_PREFIX "diagnostics.")
+endif()
+
+if(MKA_BUILD_TESTS)
+    add_executable(mka-audio-corpus-tests test/fuzz/test_corpus.cpp test/fuzz/config_case.cpp)
+    target_link_libraries(mka-audio-corpus-tests PRIVATE mka-core-audio GTest::gtest_main)
+    gtest_discover_tests(mka-audio-corpus-tests TEST_PREFIX "diagnostics.")
+endif()
+option(MKA_BUILD_FUZZERS "Build Clang libFuzzer configuration harness" OFF)
+if(MKA_BUILD_FUZZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR NOT MKA_SANITIZER STREQUAL "address-undefined")
+        message(FATAL_ERROR "MKA_BUILD_FUZZERS requires Clang and MKA_SANITIZER=address-undefined")
+    endif()
+    target_compile_options(mka-core-audio PRIVATE -fsanitize=fuzzer-no-link)
+    add_executable(mka-audio-config-fuzz test/fuzz/fuzz_config.cpp test/fuzz/config_case.cpp)
+    target_link_libraries(mka-audio-config-fuzz PRIVATE mka-core-audio)
+    target_compile_options(mka-audio-config-fuzz PRIVATE -fsanitize=fuzzer)
+    target_link_options(mka-audio-config-fuzz PRIVATE -fsanitize=fuzzer)
+endif()
+
+option(MKA_BUILD_EXAMPLES "Build offline DSP integration example" OFF)
+if(MKA_BUILD_EXAMPLES)
+    add_executable(mka-dsp-example examples/dsp_integration.cpp)
+    target_link_libraries(mka-dsp-example PRIVATE mka-core-audio)
+    if(MKA_BUILD_TESTS)
+        add_test(NAME dsp.example COMMAND mka-dsp-example)
+        set_tests_properties(dsp.example PROPERTIES LABELS "unit;dsp;nonrt" TIMEOUT 10)
+    endif()
+endif()
+
+if(MKA_BUILD_TESTS)
+    add_executable(mka-audio-dsp-tests test/integration/test_dsp.cpp test/integration/test_diagnostics.cpp)
+    target_link_libraries(mka-audio-dsp-tests PRIVATE mka-core-audio GTest::gtest_main)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND MKA_ALLOCATOR_TESTS)
+        target_sources(mka-audio-dsp-tests PRIVATE test/integration/test_dsp_rt.cpp test/utils/alloc_probe.cpp)
+    endif()
+    gtest_discover_tests(mka-audio-dsp-tests TEST_PREFIX "dsp.")
+endif()
+
+if(MKA_BUILD_TESTS AND MKA_BUILD_ALSA)
+    add_executable(mka-audio-alsa-switch-tests test/linux/alsa/test_switch.cpp)
+    target_link_libraries(mka-audio-alsa-switch-tests PRIVATE mka-audio-alsa ALSA::ALSA GTest::gtest_main)
+    gtest_discover_tests(mka-audio-alsa-switch-tests TEST_PREFIX "alsa.switch.")
+endif()
+
+if(MKA_BUILD_TESTS AND MKA_BUILD_ALSA)
+    add_executable(mka-audio-float-pipeline-tests test/linux/alsa/test_dsp_pipeline.cpp)
+    target_link_libraries(mka-audio-float-pipeline-tests PRIVATE mka-audio-alsa ALSA::ALSA GTest::gtest_main)
+    foreach(symbol snd_pcm_hw_params_set_access snd_pcm_mmap_begin snd_pcm_mmap_commit)
+        target_link_options(mka-audio-float-pipeline-tests PRIVATE "-Wl,--wrap=${symbol}")
+    endforeach()
+    gtest_discover_tests(mka-audio-float-pipeline-tests TEST_PREFIX "alsa.dsp.")
+endif()
+
 if(MKA_BUILD_TESTS)
     set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ClassifyTests.cmake")
 endif()
+
+include(cmake/Install.cmake)
+
+include(cmake/Release.cmake)

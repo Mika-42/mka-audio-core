@@ -989,9 +989,9 @@ Current development priorities include:
 * [ ] Integrate external DSP block adaptation without adding it to Core Audio
 * [ ] Add comprehensive backend tests
 * [ ] Add real-time safety tests
-* [ ] Add performance/latency benchmarks
+* [x] Add performance/latency benchmarks (opt-in CPU/service/jitter diagnostics; not physical round-trip latency)
 * [ ] Add Windows backend
-* [ ] Add macOS backend
+* [x] Add macOS backend (CoreAudio HAL; see native validation limits)
 
 The API is expected to change while the architecture is being validated.
 
@@ -1206,7 +1206,8 @@ alone prove that a simultaneous opening is possible.
 | JACK | One client name whose output ports feed framework input and whose input ports receive framework output. Both port groups must have enough channels. One server cycle supplies one duplex callback. Empty ID creates unconnected client ports. |
 | PipeWire | One source or sink node name; a valid Duplex request returns `ConfigurationFailed` before native stream creation. Input and Output are supported separately. |
 | PulseAudio | One source or sink name; a valid Duplex request returns `ConfigurationFailed` before native stream creation. Empty ID selects the default device for the requested single direction. |
-| Windows/macOS | Current backend files are module stubs; no working duplex implementation is claimed. |
+| Windows | WASAPI shared-mode input/output; duplex requests are rejected. |
+| macOS | CoreAudio HAL Float32 input/output or duplex on one device/clock; no implicit aggregate device. |
 
 ALSA does not combine unrelated capture/playback devices; JACK can expose both
 port groups under the same client ID. Two unidirectional backend instances do not
@@ -1506,3 +1507,35 @@ CXX="$(brew --prefix llvm)/bin/clang++" cmake --preset macos-core
 cmake --build --preset macos-core --parallel 2
 ctest --preset macos-core
 ```
+
+
+`MKA_BUILD_COREAUDIO` enables the macOS-only `mka-audio-coreaudio` target and links
+CoreAudio/CoreFoundation. Import `mka.audio.backend.coreaudio` for
+`mka::audio::core::CoreAudio` (`coreaudio` is retained as a compatibility import).
+Use the `macos-coreaudio` configure/build/test presets for native SDK unit tests
+and `macos-coreaudio-asan` for ASan/UBSan. Requests use a device UID from discovery
+(or an empty UID for the system default), native channel counts and Float32.
+Capture requires microphone permission for the host application/terminal.
+See [CoreAudio validation and transport limits](docs/sprint06-validation.md) for
+supported layouts, exact rate/buffer handling, hardware tests and RT evidence.
+
+Backend availability comes from `import mka.audio.backend.plateform` (the historical
+module spelling is preserved). `knownBackends` lists all stable identifiers;
+`supportedBackends` and `isBackendCompiled()` describe the implementations enabled
+in this library's CMake build. A core-only build has an empty supported list on
+all operating systems. ASIO, WMME and DirectSound remain known enum values and
+empty source stubs; they are never advertised as compiled/operational backends.
+Availability does not guarantee a running service, a device or permission to open it.
+
+
+The [sprint 7 validation guide](docs/sprint07-validation.md) documents standalone
+module clients, CPU/callback jitter reports, native virtual endurance/hotplug,
+configuration fuzzing and the relocatable `mkaAudioCore` CMake package. Install
+production builds with tests disabled; consumers use `find_package(mkaAudioCore
+CONFIG REQUIRED COMPONENTS ...)` and `mka::core` / `mka::<backend>` targets with a
+matching compiler, runtime and C++ dialect. Private producer source/build paths
+are not needed to consume the relocated prefix.
+
+The maintained [backend / OS support matrix](docs/backend-support.md) lists actual
+implementations, directions, formats, scheduling states and native test limits.
+Known identifiers and successful compilation do not imply an available endpoint.

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "fake_api.hpp"
+#include "../../examples/dsp/gain.hpp"
 import mka.audio.backend.coreaudio;
 using namespace mka_coreaudio_detail;
 
@@ -40,4 +41,21 @@ TEST(CoreAudioProcess, RejectsOversizedPartialNullAndMismatchedNativeBuffers) {
     EXPECT_TRUE(std::all_of(output.data.begin(),output.data.end(),[](float v){return v==0;}));
     state.failed=false;state.capacity=256;input.list.mBuffers[0].mDataByteSize/=2;
     state.process(&input.list,&output.list);EXPECT_TRUE(state.failed.load());
+}
+
+TEST(CoreAudioProcess, PublicFloat32DuplexRunsTheApplicationDspOnBorrowedPlanarViews) {
+    mac_test::FakeApi fake;mka_example::Gain dsp;mka::audio::core::CoreAudio backend;
+    ASSERT_TRUE(backend.setProcessFunction(+[](void* user,const mka::audio::core::AudioProcessContext& context) noexcept {
+        static_cast<mka_example::Gain*>(user)->process(context);
+    },&dsp));
+    using namespace mka::audio::core;
+    ASSERT_TRUE(backend.open({"fake-duplex",Direction::Duplex,2,2,48000,Format::Float32,256}));ASSERT_TRUE(backend.start());
+    mac_test::Buffer input(2,37),output(2,37,1);
+    for(std::size_t i=0;i<input.data.size();i+=2){input.data[i]=0.25f;input.data[i+1]=-0.5f;}
+    for(int cycle=0;cycle<3;++cycle){
+        fake.pump(&input.list,&output.list);
+        for(std::size_t i=0;i<output.data.size();i+=2){EXPECT_FLOAT_EQ(output.data[i],0.125f);EXPECT_FLOAT_EQ(output.data[i+1],-0.25f);}
+    }
+    ASSERT_TRUE(backend.stop());ASSERT_TRUE(backend.close());
+    EXPECT_EQ(dsp.calls.load(),3u);EXPECT_EQ(dsp.frames.load(),111u);
 }

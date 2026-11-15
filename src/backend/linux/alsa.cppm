@@ -34,6 +34,7 @@ module;
 #include <optional>
 #include <pthread.h>
 #include <sched.h>
+#include "detail/realtime.hpp"
 #include <string>
 #include <thread>
 #include <utility>
@@ -733,21 +734,6 @@ export namespace mka::audio::core {
         // Thread audio (B5)
         // ---------------------------------------------------------------------
 
-        static bool requestRealtimePriority() noexcept {
-            const int maxPriority = sched_get_priority_max(SCHED_FIFO);
-            if (maxPriority <= 0) return false;
-
-            // Selon RLIMIT_RTPRIO / rtkit, seules les priorités basses sont permises.
-            for (const int wanted : {80, 50, 20, 10, 1}) {
-                sched_param param{};
-                param.sched_priority = std::min(wanted, maxPriority);
-                if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &param) == 0) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         static void flushDenormals() noexcept {
 #if defined(__SSE__)
             _mm_setcsr(_mm_getcsr() | 0x8040u);   // FTZ (bit 15) | DAZ (bit 6)
@@ -761,7 +747,7 @@ export namespace mka::audio::core {
 
         void threadMain(const std::stop_token &stopToken) noexcept {
             pthread_setname_np(pthread_self(), "mka-alsa");
-            notifyRealtime(requestRealtimePriority());
+            notifyRealtime(mka_alsa_detail::requestRealtimePriority());
             flushDenormals();
 
             const Result started = beginStreaming();
