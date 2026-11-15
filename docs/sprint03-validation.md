@@ -42,6 +42,12 @@ PulseAudio null devices, a PipeWire null sink and a continuous silent source
 provided by a client stream. The original audiotestsrc fixture could exhaust
 its buffers and was replaced; the final capture test ran and passed.
 
+For PipeWire contracts alone, use `run_virtual_tests.sh --pipewire-only` as
+described in [the dedicated launch instructions](pipewire-contract-tests.md).
+This mode requires no JACK or PulseAudio daemon, including when launched from
+an IDE. Running the binary against an unrelated desktop session does not supply
+the virtual sink required by the suite.
+
 Allocation interposition and sanitizer runtimes are checked in separate
 executables. Native sanitizer checks build the contract/buffer targets, which
 do not link the allocation probe. C++ scalar, array, nothrow and aligned

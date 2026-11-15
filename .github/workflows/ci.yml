@@ -99,7 +99,10 @@ jobs:
         run: ctest --test-dir build/linux -L unit --no-tests=error --output-on-failure --output-junit "${{ github.workspace }}/junit-unit.xml"
       - name: Native tests on private virtual servers
         if: matrix.native
-        run: bash test/linux/run_virtual_tests.sh ctest --test-dir build/linux -L integration -LE hardware --no-tests=error --output-on-failure --output-junit "${{ github.workspace }}/junit-native.xml"
+        run: |
+          fixture_args=()
+          if [ "${{ matrix.name }}" = pipewire ]; then fixture_args+=(--pipewire-only); fi
+          bash test/linux/run_virtual_tests.sh "${fixture_args[@]}" ctest --test-dir build/linux -L integration -LE hardware --no-tests=error --output-on-failure --output-junit "${{ github.workspace }}/junit-native.xml"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
