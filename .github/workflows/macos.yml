@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   macos-core:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +33,7 @@ jobs:
             build/macos-core/Testing/Temporary/LastTest.log
 
   macos-coreaudio:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -73,7 +73,7 @@ jobs:
             build/${{ matrix.preset }}/asan-witness.log
 
   macos-coreaudio-smoke:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

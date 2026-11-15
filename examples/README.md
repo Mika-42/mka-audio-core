@@ -5,6 +5,19 @@ SDK-independent teaching example with `MKA_BUILD_EXAMPLES=ON`; `mka-dsp-example`
 uses an explicitly offline transport and requires no sound device. Its worker
 supplies variable callback sizes and verifies the processed samples.
 
+## Native platform support
+
+| Platform | Backends | Operational support |
+|---|---|---|
+| Linux | ALSA, JACK, PipeWire, PulseAudio | **Supported and functional** — all four Linux backends are covered. |
+| Windows | WASAPI; ASIO/WMME/DirectSound under assessment | **Not yet supported** — operational validation is in progress. |
+| macOS | CoreAudio | **Not yet supported** — operational validation is in progress. |
+
+The offline example can run independently of native device support. For native
+audio, use the [documented formats and directions](../docs/backend-support.md).
+Windows/macOS build and unit-test coverage exists; complete operational validation
+remains pending.
+
 A native application's binding uses the same public API:
 
 ```cpp
