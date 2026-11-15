@@ -9,6 +9,7 @@
 #include <thread>
 #include "../test/diagnostics/metrics.hpp"
 import mka.audio.backend.abstract;
+import mka.audio.diagnostics;
 #if MKA_BUILD_ALSA
 import mka.audio.backend.alsa;
 #endif
@@ -87,14 +88,14 @@ int main(int argc,char** argv){
     EndpointConfig config{device,input?Direction::Input:Direction::Output,input?channels:0,input?0:channels,
         48000,backendName=="alsa"?Format::Int32:Format::Float32,frames};
     const auto openBegin=mka_audit::now();const auto opened=backend->open(config);const auto openEnd=mka_audit::now();
-    if(!opened){std::cerr<<"Open failed, ErrorType="<<static_cast<int>(opened.error())<<'\n';return 1;}
+    if(!opened){std::cerr<<"Open failed, ErrorType="<<errorName(opened.error())<<'\n';return 1;}
     const auto cpuBegin=std::clock();const auto begin=mka_audit::now();const auto started=backend->start();const auto startEnd=mka_audit::now();
-    if(!started){(void)backend->close();std::cerr<<"Start failed\n";return 1;}
+    if(!started){(void)backend->close();std::cerr<<"Start failed: "<<errorName(started.error())<<'\n';return 1;}
     const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(seconds);
     while(std::chrono::steady_clock::now()<deadline && !backend->status().failed)std::this_thread::sleep_for(std::chrono::milliseconds(10));
     const auto stopBegin=mka_audit::now();const auto stopped=backend->stop();const auto end=mka_audit::now();const auto cpuEnd=std::clock();
     const auto status=backend->status();const auto closed=backend->close();
-    if(!stopped || !closed){std::cerr<<"Stop/close failed\n";return 1;}
+    if(!stopped || !closed){std::cerr<<"Stop/close failed: "<<errorName(!stopped?stopped.error():closed.error())<<'\n';return 1;}
     const auto service=mka_audit::serviceTime(recorder);
     const auto jitter=mka_audit::jitter(recorder,48000);
     std::ofstream file;if(!path.empty()){file.open(path);if(!file)return 2;}
@@ -110,6 +111,7 @@ int main(int argc,char** argv){
        <<",\"dropped_timing_samples\":"<<recorder.dropped<<",\"service_mean_ns\":"<<service.mean<<",\"service_p99_ns\":"<<service.p99
        <<",\"jitter_intervals\":"<<jitter.count<<",\"jitter_abs_mean_ns\":"<<jitter.mean
        <<",\"jitter_abs_p99_ns\":"<<jitter.p99<<",\"jitter_abs_max_ns\":"<<jitter.max
-       <<",\"xruns\":"<<status.xruns<<",\"failed\":"<<(status.failed?"true":"false")<<",\"realtime\":"<<static_cast<int>(status.realtime)<<"}\n";
+       <<",\"xruns\":"<<status.xruns<<",\"failed\":"<<(status.failed?"true":"false")<<",\"realtime\":"<<static_cast<int>(status.realtime)<<",\"realtime_name\":";
+    quote(out,std::string(realtimeName(status.realtime)));out<<"}\n";
     return !out || status.failed || !recorder.calls.load() || !recorder.frames.load()?1:0;
 }
